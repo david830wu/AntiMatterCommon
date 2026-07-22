@@ -1,51 +1,51 @@
 cmake_minimum_required(VERSION 3.27)
 
-project({{ProjectName}}Lib
-        VERSION {{Version}}
-        DESCRIPTION "{{ProjectName}}"
+project(AntiMatterCommonLib
+        VERSION 0.1
+        DESCRIPTION "AntiMatterCommon"
         LANGUAGES C
 )
 
-add_library({{ProjectName}})
+add_library(AntiMatterCommon)
 target_sources(
-    {{ProjectName}}
+    AntiMatterCommon
 PRIVATE
-    {{ProjectName}}.c
+    AntiMatterCommon.c
 )
-set_target_properties({{ProjectName}} 
+set_target_properties(AntiMatterCommon 
 PROPERTIES PUBLIC_HEADER 
-    "{{ProjectName}}.h;{{ProjectName}}Version.h"
+    "AntiMatterCommon.h;AntiMatterCommonVersion.h"
 )
 target_include_directories(
-    {{ProjectName}}
+    AntiMatterCommon
 PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
     $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(
-    {{ProjectName}}
+    AntiMatterCommon
 PUBLIC
     Threads::Threads
 )
-add_library({{ProjectName}}::{{ProjectName}} ALIAS {{ProjectName}})
+add_library(AntiMatterCommon::AntiMatterCommon ALIAS AntiMatterCommon)
 
-install(TARGETS {{ProjectName}} 
+install(TARGETS AntiMatterCommon 
     DESTINATION lib
     PUBLIC_HEADER DESTINATION include
 )
 
-install(TARGETS {{ProjectName}}
-    EXPORT {{ProjectName}}Targets
+install(TARGETS AntiMatterCommon
+    EXPORT AntiMatterCommonTargets
     LIBRARY DESTINATION lib
     INCLUDES DESTINATION include
 )
 
-set(ConfigPackageLocation lib/cmake/{{ProjectName}})
-install(EXPORT {{ProjectName}}Targets
-    FILE {{ProjectName}}Targets.cmake
-    NAMESPACE {{ProjectName}}::
+set(ConfigPackageLocation lib/cmake/AntiMatterCommon)
+install(EXPORT AntiMatterCommonTargets
+    FILE AntiMatterCommonTargets.cmake
+    NAMESPACE AntiMatterCommon::
     DESTINATION ${ConfigPackageLocation}
 )
-install(FILES ${CMAKE_SOURCE_DIR}/cmake/{{ProjectName}}Config.cmake
+install(FILES ${CMAKE_SOURCE_DIR}/cmake/AntiMatterCommonConfig.cmake
     DESTINATION ${ConfigPackageLocation}
 )

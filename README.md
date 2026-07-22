@@ -1,3 +1,3 @@
-# {{ProjectName}}
+# AntiMatterCommon
 
-{{Description}}
+Common Utilities for AntiMatter Project

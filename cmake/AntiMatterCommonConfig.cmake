@@ -3,5 +3,5 @@ include(CMakeFindDependencyMacro)
 # add all libs imported by find_package() in project
 find_dependency(HDF5)
 
-# config {{ProjectName}}
-include("${CMAKE_CURRENT_LIST_DIR}/{{ProjectName}}Targets.cmake")
+# config AntiMatterCommon
+include("${CMAKE_CURRENT_LIST_DIR}/AntiMatterCommonTargets.cmake")
