@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.27)
 
-project({{ProjectName}}Apps
-        VERSION {{Version}}
-        DESCRIPTION "{{ProjectName}} apps"
+project(AntiMatterCommonApps
+        VERSION 0.1
+        DESCRIPTION "AntiMatterCommon apps"
         LANGUAGES C
 )
 
