@@ -1,4 +1,4 @@
-/* BenchDisabled — the cost of a runtime-disabled log call.
+/* AmcLoggerBenchDisabled — the cost of a runtime-disabled log call.
  *
  * Design §10 target: <= ~2 ns per call.
  *
@@ -8,7 +8,7 @@
  * not evaluated. The empty asm keeps the compiler from collapsing the loop. */
 
 #include "AmcLogger.h"
-#include "BenchSupport.h"
+#include "AmcLoggerBenchSupport.h"
 
 int main(void)
 {
@@ -26,7 +26,7 @@ int main(void)
     }
     uint64_t t1 = bench_now_ns();
 
-    printf("BenchDisabled: %.2f ns per disabled call over %d calls "
+    printf("AmcLoggerBenchDisabled: %.2f ns per disabled call over %d calls "
            "(target <= ~2 ns; includes loop overhead)\n",
            (double)(t1 - t0) / (double)N, (int)N);
 

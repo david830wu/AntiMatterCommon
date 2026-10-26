@@ -24,7 +24,7 @@
  * ============================================================================
  */
 
-#include "TestSupport.h"
+#include "AmcLoggerTestSupport.h"
 
 #if defined(__linux__)
 #include <dirent.h>

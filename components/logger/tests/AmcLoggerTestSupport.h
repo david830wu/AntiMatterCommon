@@ -2,11 +2,11 @@
 #define AMC_LOGGER_TEST_SUPPORT_H_
 
 /*
- * TestSupport.h — shared helpers for the AmcLogger documentation test suite.
+ * AmcLoggerTestSupport.h — shared helpers for the AmcLogger documentation test suite.
  *
- * The chapters (Test01..Test09) are written to be read in order: together they
- * are the user manual, in executable form. Helpers here keep each chapter
- * focused on behavior instead of plumbing:
+ * The chapters (AmcLoggerTest01..AmcLoggerTest10) are written to be read in order:
+ * together they are the user manual, in executable form. Helpers here keep each
+ * chapter focused on behavior instead of plumbing:
  *
  *   - capture_stdout()/release_stdout(): temporarily redirect a standard
  *     stream to a file so tests can assert on what a user would see.

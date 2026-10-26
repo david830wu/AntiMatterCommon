@@ -1,8 +1,8 @@
-/* TestHelperModule.c — logs from a different source file than the test chapter.
- * Its lines carry MODULE "TestHelperModule" and this file's function names,
+/* AmcLoggerTestHelperModule.c — logs from a different source file than the test chapter.
+ * Its lines carry MODULE "AmcLoggerTestHelperModule" and this file's function names,
  * purely because the macros are expanded here. Nothing was registered. */
 
-#include "TestHelperModule.h"
+#include "AmcLoggerTestHelperModule.h"
 #include "AmcLogger.h"
 
 void helper_module_log_info(int value)

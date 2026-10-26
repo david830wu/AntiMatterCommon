@@ -25,7 +25,7 @@ endif()
 # ---- components: components/<comp>/, built, tested and packaged together ----
 # Lowercase directory names in dependency order. Component <comp> provides the
 # library target amc_<comp> (AntiMatter::Amc<Comp>), see CLAUDE.md.
-set(AMC_COMPONENTS)
+set(AMC_COMPONENTS logger)
 foreach(comp IN LISTS AMC_COMPONENTS)
     add_subdirectory(components/${comp})
 endforeach()

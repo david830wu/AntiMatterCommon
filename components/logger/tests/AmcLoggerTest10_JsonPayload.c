@@ -33,7 +33,7 @@
  * ============================================================================
  */
 
-#include "TestSupport.h"
+#include "AmcLoggerTestSupport.h"
 
 void setUp(void)   { amc_logger_internal_test_reset(); }
 void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
@@ -51,7 +51,7 @@ static void test_TuplesComposeJson(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "ERROR", "Test10_JsonPayload", __func__,
+                        "ERROR", "AmcLoggerTest10_JsonPayload", __func__,
                         "VolumeError", "-", "{\"threshold\":1000,\"volume\":1200}");
     free(out);
 }
@@ -95,7 +95,7 @@ static void test_TypedHelpers(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test10_JsonPayload", __func__, "Typed", "-",
+                        "INFO", "AmcLoggerTest10_JsonPayload", __func__, "Typed", "-",
                         "{\"volume\":1200,\"epoch_ns\":1753167600123456789,"
                         "\"order_id\":18446744073709551615,\"px\":99.25,"
                         "\"tag\":\"opening\",\"armed\":true}");
@@ -118,7 +118,7 @@ static void test_RawTuplesForPrecisionNestingAndConstants(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test10_JsonPayload", __func__, "Mixed", "-",
+                        "INFO", "AmcLoggerTest10_JsonPayload", __func__, "Mixed", "-",
                         "{\"vol\":1200,\"px\":99.50,"
                         "\"order\":{\"vol\":7,\"px\":8.50},"
                         "\"state\":null,\"armed\":true}");
@@ -136,7 +136,7 @@ static void test_WorksWithTraderIdVariants(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "WARN", "Test10_JsonPayload", __func__,
+                        "WARN", "AmcLoggerTest10_JsonPayload", __func__,
                         "PositionLimit", "61", "{\"limit\":500}");
     free(out);
 }
@@ -176,7 +176,7 @@ static void test_EscapedStringValuesStaySafe(void)
         "an embedded newline must not break the one-line format");
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test10_JsonPayload", __func__, "Hostile", "-",
+                        "INFO", "AmcLoggerTest10_JsonPayload", __func__, "Hostile", "-",
                         "{\"msg\":\"he said \\\"stop\\\\go\\\"\\nline2\\ttab\\u0001\"}");
     free(out);
 }
@@ -196,7 +196,7 @@ static void test_EscapeRingNullAndUtf8(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test10_JsonPayload", __func__, "Multi", "-",
+                        "INFO", "AmcLoggerTest10_JsonPayload", __func__, "Multi", "-",
                         "{\"a\":\"one\\\"1\",\"b\":\"two\\\\2\",\"c\":\"\",\"d\":\"\xe4\xbb\xb7\"}");
     free(out);
 }

@@ -1,10 +1,10 @@
-/* BenchSpdlog — the optional spdlog comparison (Design §10 acceptance: same
+/* AmcLoggerBenchSpdlog — the optional spdlog comparison (Design §10 acceptance: same
  * order of magnitude as spdlog async, default configs, same machine).
  *
  * Build with: -DAMC_BUILD_BENCH=ON -DAMC_BENCH_SPDLOG=ON   (FetchContent; the
  * C++ dependency is confined to this benchmark target — the library is pure C).
  *
- * Runs the same two scenarios as BenchEnqueue / BenchThroughput on spdlog's
+ * Runs the same two scenarios as AmcLoggerBenchEnqueue / AmcLoggerBenchThroughput on spdlog's
  * async logger (thread pool: 131072 slots, 1 worker, block policy) with a
  * comparable output pattern, and prints results in the same format. Compare by
  * running the Amc benches and this one back to back. */
@@ -39,7 +39,7 @@ int main()
     spdlog::init_thread_pool(131072, 1);
     auto logger = spdlog::basic_logger_mt<spdlog::async_factory>(
         "bench", "./bench_spdlog.log", true);
-    logger->set_pattern("[%Y-%m-%d %H:%M:%S.%f][%l][BenchSpdlog][main][BenchMsg][-]%v");
+    logger->set_pattern("[%Y-%m-%d %H:%M:%S.%f][%l][AmcLoggerBenchSpdlog][main][BenchMsg][-]%v");
 
     constexpr int N_SAMPLES = 100000;
     std::vector<uint64_t> samples(N_SAMPLES);
@@ -65,7 +65,7 @@ int main()
     }
     std::sort(samples.begin(), samples.end());
 
-    std::printf("BenchSpdlog enqueue: %d samples, timer-pair overhead ~%llu ns\n",
+    std::printf("AmcLoggerBenchSpdlog enqueue: %d samples, timer-pair overhead ~%llu ns\n",
                 N_SAMPLES, (unsigned long long)timer);
     std::printf("  raw      p50=%llu  p90=%llu  p99=%llu  p99.9=%llu  max=%llu ns\n",
                 (unsigned long long)pct(samples, 50), (unsigned long long)pct(samples, 90),
@@ -83,7 +83,7 @@ int main()
     logger->flush();
     uint64_t t1 = now_ns();
 
-    std::printf("BenchSpdlog throughput: %d lines\n", N);
+    std::printf("AmcLoggerBenchSpdlog throughput: %d lines\n", N);
     std::printf("  producer-side  %.0f lines/s\n",
                 (double)N / ((double)(t_prod - t0) / 1e9));
     std::printf("  end-to-end     %.0f lines/s\n",

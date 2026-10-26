@@ -22,7 +22,7 @@
  * ============================================================================
  */
 
-#include "TestSupport.h"
+#include "AmcLoggerTestSupport.h"
 
 void setUp(void)   { amc_logger_internal_test_reset(); }
 void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }

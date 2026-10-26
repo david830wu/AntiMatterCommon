@@ -19,7 +19,7 @@
  * ============================================================================
  */
 
-#include "TestSupport.h"
+#include "AmcLoggerTestSupport.h"
 
 #include <time.h>
 
@@ -45,7 +45,7 @@ static void test_FileOnly_StdoutStaysSilent(void)
     TEST_ASSERT_EQUAL_INT(2, count_lines(file));
     char line[512];
     assert_log_line(get_line(file, 0, line, sizeof(line)),
-                        "INFO", "Test05_FileSink", __func__,
+                        "INFO", "AmcLoggerTest05_FileSink", __func__,
                         "ToFileOnly", "-", "{\"n\":1}");
     free(console);
     free(file);
