@@ -19,7 +19,7 @@
  * ============================================================================
  */
 
-#include "TestSupport.h"
+#include "AmcLoggerTestSupport.h"
 
 void setUp(void)   { amc_logger_internal_test_reset(); }
 void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
@@ -36,7 +36,7 @@ static void test_MinimalUse_InitLogShutdown(void)
     TEST_ASSERT_EQUAL_INT(1, count_lines(out));
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test01_QuickStart", __func__,
+                        "INFO", "AmcLoggerTest01_QuickStart", __func__,
                         "HelloLogger", "-", "{\"greeting\":\"hello\"}");
     free(out);
 }
@@ -61,16 +61,16 @@ static void test_OneMacroPerLevel_DefaultLevelIsInfo(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test01_QuickStart", __func__,
+                        "INFO", "AmcLoggerTest01_QuickStart", __func__,
                         "PrintPi", "-", "{\"pi\":3.1415926}");
     assert_log_line(get_line(out, 1, line, sizeof(line)),
-                        "WARN", "Test01_QuickStart", __func__,
+                        "WARN", "AmcLoggerTest01_QuickStart", __func__,
                         "VagueAnswer", "-", "{\"answer\":42}");
     assert_log_line(get_line(out, 2, line, sizeof(line)),
-                        "ERROR", "Test01_QuickStart", __func__,
+                        "ERROR", "AmcLoggerTest01_QuickStart", __func__,
                         "InstrumentError", "-", "{\"instrument\":\"000042\"}");
     assert_log_line(get_line(out, 3, line, sizeof(line)),
-                        "CRITICAL", "Test01_QuickStart", __func__,
+                        "CRITICAL", "AmcLoggerTest01_QuickStart", __func__,
                         "TypeMisMatch", "-", "{\"lhs\":\"cat\",\"rhs\":\"fruit\"}");
     free(out);
 }
@@ -87,7 +87,7 @@ static void test_PayloadIsOptional_EmptyRendersEmptyJson(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "WARN", "Test01_QuickStart", __func__,
+                        "WARN", "AmcLoggerTest01_QuickStart", __func__,
                         "JustAnEvent", "-", "{}");
     free(out);
 }
@@ -105,10 +105,10 @@ static void test_TraderIdVariants(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test01_QuickStart", __func__,
+                        "INFO", "AmcLoggerTest01_QuickStart", __func__,
                         "ExtractorInit", "100", "{\"value\":42}");
     assert_log_line(get_line(out, 1, line, sizeof(line)),
-                        "INFO", "Test01_QuickStart", __func__,
+                        "INFO", "AmcLoggerTest01_QuickStart", __func__,
                         "NoAccount", "-", "{}");
     free(out);
 }

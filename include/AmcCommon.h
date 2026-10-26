@@ -12,4 +12,6 @@
 
 #include "AmcCommonVersion.h"
 
+#include "AmcLogger.h"
+
 #endif /* AMC_COMMON_H_ */

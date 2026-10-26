@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-#include "TestSupport.h"
+#include "AmcLoggerTestSupport.h"
 
 void setUp(void)   { amc_logger_internal_test_reset(); }
 void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
@@ -41,7 +41,7 @@ static void test_ReferenceConfigLoads(void)
         "  basic_file: \"./logs/$TODAY/App.$PID.log\"\n"
         "loggers:\n"
         "  main: INFO\n"
-        "  Test04_Configuration: DEBUG\n");
+        "  AmcLoggerTest04_Configuration: DEBUG\n");
     capture_stdout();
     TEST_ASSERT_EQUAL_INT(0, amc_logger_init("cfg.yaml"));
     AMC_LOGGER_DEBUG("OverrideActive");   /* per-module DEBUG from the config */

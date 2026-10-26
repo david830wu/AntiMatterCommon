@@ -1,4 +1,4 @@
-/* BenchEnqueue — per-call latency of an ENABLED asynchronous log call:
+/* AmcLoggerBenchEnqueue — per-call latency of an ENABLED asynchronous log call:
  * timestamp capture + payload vsnprintf + copy into the ring under the queue
  * mutex.
  *
@@ -10,7 +10,7 @@
  * and subtracted in the "adjusted" line. */
 
 #include "AmcLogger.h"
-#include "BenchSupport.h"
+#include "AmcLoggerBenchSupport.h"
 
 #include <unistd.h>
 
@@ -64,7 +64,7 @@ int main(void)
     uint64_t p999 = bench_percentile(samples, N_SAMPLES, 99.9);
     uint64_t max = samples[N_SAMPLES - 1];
 
-    printf("BenchEnqueue burst (back-to-back calls): %d samples, "
+    printf("AmcLoggerBenchEnqueue burst (back-to-back calls): %d samples, "
            "timer-pair overhead ~%llu ns (median)\n",
            (int)N_SAMPLES, (unsigned long long)timer);
     printf("  raw      p50=%llu  p90=%llu  p99=%llu  p99.9=%llu  max=%llu ns\n",
@@ -93,7 +93,7 @@ int main(void)
         next += 100000;
     }
     qsort(samples, N_PACED, sizeof(uint64_t), cmp_u64);
-    printf("BenchEnqueue paced (1 call / 100 us, idle queue): %d samples\n",
+    printf("AmcLoggerBenchEnqueue paced (1 call / 100 us, idle queue): %d samples\n",
            (int)N_PACED);
     printf("  adjusted p50=%lld  p99=%lld ns (includes waking the worker)\n",
            (long long)(bench_percentile(samples, N_PACED, 50.0) - timer),

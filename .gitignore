@@ -65,6 +65,13 @@ bld/
 __pycache__/
 *.pyc
 
+# toolchain by-products
+*.d
+*.dSYM/
+*.dwo
+*.so.*
+*.su
+
 # build trees and local install prefixes (build_component.sh, CI)
 build*/
 Testing/

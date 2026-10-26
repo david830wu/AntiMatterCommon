@@ -39,10 +39,20 @@ static void test_NumericPartsAgreeWithTheString(void)
     TEST_ASSERT_EQUAL_STRING(AMC_COMMON_VERSION, composed);
 }
 
+/* One include and one link bring every component: here the logger, whose
+ * statistics are readable at any time — before init they are all zero. */
+static void test_UmbrellaBringsEveryComponent(void)
+{
+    struct amc_logger_stats stats;
+    amc_logger_get_stats(&stats);
+    TEST_ASSERT_EQUAL_UINT64(0, stats.enqueued);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_VersionMatchesTheBuild);
     RUN_TEST(test_NumericPartsAgreeWithTheString);
+    RUN_TEST(test_UmbrellaBringsEveryComponent);
     return UNITY_END();
 }

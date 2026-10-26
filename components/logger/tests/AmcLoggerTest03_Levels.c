@@ -8,7 +8,7 @@
  *      default_level: INFO
  *      loggers:
  *        NoisyModule: ERROR       # quiet this one down
- *        Test03_Levels: DEBUG     # verbose for this one
+ *        AmcLoggerTest03_Levels: DEBUG     # verbose for this one
  *
  *  `OFF` silences a module entirely. Level names in the config are
  *  case-insensitive. Modules never listed anywhere simply use default_level —
@@ -19,8 +19,8 @@
  * ============================================================================
  */
 
-#include "TestSupport.h"
-#include "TestHelperModule.h"
+#include "AmcLoggerTestSupport.h"
+#include "AmcLoggerTestHelperModule.h"
 
 void setUp(void)   { amc_logger_internal_test_reset(); }
 void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
@@ -46,7 +46,7 @@ static void test_PerModuleOverride(void)
     write_file("cfg.yaml",
         "default_level: INFO\n"
         "loggers:\n"
-        "  Test03_Levels: ERROR\n");
+        "  AmcLoggerTest03_Levels: ERROR\n");
     capture_stdout();
     amc_logger_init("cfg.yaml");
     AMC_LOGGER_INFO("SuppressedHere");        /* below ERROR -> filtered   */
@@ -66,7 +66,7 @@ static void test_LevelOffSilencesEverything(void)
 {
     write_file("cfg.yaml",
         "loggers:\n"
-        "  Test03_Levels: OFF\n");
+        "  AmcLoggerTest03_Levels: OFF\n");
     capture_stdout();
     amc_logger_init("cfg.yaml");
     AMC_LOGGER_CRITICAL("ShouldNeverAppear");

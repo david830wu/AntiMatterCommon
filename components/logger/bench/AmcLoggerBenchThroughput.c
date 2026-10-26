@@ -1,4 +1,4 @@
-/* BenchThroughput — sustained end-to-end rate into basic_file.
+/* AmcLoggerBenchThroughput — sustained end-to-end rate into basic_file.
  *
  * Design §10 target: worker drain >= 1M lines/s.
  *
@@ -8,7 +8,7 @@
  * drain rate. */
 
 #include "AmcLogger.h"
-#include "BenchSupport.h"
+#include "AmcLoggerBenchSupport.h"
 
 #include <sys/stat.h>
 #include <unistd.h>
@@ -41,7 +41,7 @@ int main(void)
 
     double prod_rate = (double)N / ((double)(t_prod - t0) / 1e9);
     double e2e_rate  = (double)N / ((double)(t1 - t0) / 1e9);
-    printf("BenchThroughput: %d lines, %.1f MB written\n", (int)N, mb);
+    printf("AmcLoggerBenchThroughput: %d lines, %.1f MB written\n", (int)N, mb);
     printf("  producer-side  %.0f lines/s\n", prod_rate);
     printf("  end-to-end     %.0f lines/s (target >= 1000000)\n", e2e_rate);
 

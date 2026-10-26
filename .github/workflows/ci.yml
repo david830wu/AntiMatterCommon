@@ -53,9 +53,12 @@ jobs:
         if: matrix.config == 'release'
         run: |
           ./build/bin/AmcCommonExample
+          (cd components/logger && ../../build/bin/AmcLoggerExample)
+          ./build/bin/AmcLoggerBenchEnqueue
+          ./build/bin/AmcLoggerBenchThroughput
 
-      # prove the installed package: find_package + AntiMatter::AntiMatterCommon,
-      # from BOTH a C and a C++ downstream target
+      # prove the installed package: find_package + AntiMatter::AntiMatterCommon and
+      # each component target, from BOTH a C and a C++ downstream target
       - name: Package smoke test (install + find_package)
         if: matrix.config == 'release'
         env:
@@ -67,3 +70,5 @@ jobs:
           cmake --build build-pkg
           ./build-pkg/AmcCommonPackageSmoke | grep -q '"via":"find_package"'
           ./build-pkg/AmcCommonPackageSmokeCpp | grep -q '"lang":"c++"'
+          ./build-pkg/AmcLoggerPackageSmoke | grep -q '"via":"find_package"'
+          ./build-pkg/AmcLoggerPackageSmokeCpp | grep -q '"lang":"c++"'

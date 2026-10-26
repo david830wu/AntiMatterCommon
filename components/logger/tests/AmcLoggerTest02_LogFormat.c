@@ -20,14 +20,14 @@
  * ============================================================================
  */
 
-#include "TestSupport.h"
-#include "TestHelperModule.h"
+#include "AmcLoggerTestSupport.h"
+#include "AmcLoggerTestHelperModule.h"
 
 void setUp(void)   { amc_logger_internal_test_reset(); }
 void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
 
-/* MODULE comes from the source file: this file logs as "Test02_LogFormat",
- * the helper file logs as "TestHelperModule" — automatically. */
+/* MODULE comes from the source file: this file logs as "AmcLoggerTest02_LogFormat",
+ * the helper file logs as "AmcLoggerTestHelperModule" — automatically. */
 static void test_ModuleIsThePerFileIdentity(void)
 {
     capture_stdout();
@@ -39,10 +39,10 @@ static void test_ModuleIsThePerFileIdentity(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test02_LogFormat", __func__,
+                        "INFO", "AmcLoggerTest02_LogFormat", __func__,
                         "FromChapterFile", "-", "{}");
     assert_log_line(get_line(out, 1, line, sizeof(line)),
-                        "INFO", "TestHelperModule", "helper_module_log_info",
+                        "INFO", "AmcLoggerTestHelperModule", "helper_module_log_info",
                         "HelperEvent", "-", "{\"value\":7}");
     free(out);
 }
@@ -63,7 +63,7 @@ static void test_FunctionFieldIsTheEnclosingFunction(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test02_LogFormat", "log_from_a_named_function",
+                        "INFO", "AmcLoggerTest02_LogFormat", "log_from_a_named_function",
                         "InsideNamedFunction", "-", "{}");
     free(out);
 }
@@ -81,7 +81,7 @@ static void test_PayloadIsPrintfComposed(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test02_LogFormat", __func__, "OrderAccepted", "-",
+                        "INFO", "AmcLoggerTest02_LogFormat", __func__, "OrderAccepted", "-",
                         "{\"order\":{\"volume\":1200,\"price\":99.50},\"tag\":\"opening\"}");
     free(out);
 }
@@ -97,7 +97,7 @@ static void test_TraderIdIsAnyInt(void)
 
     char line[512];
     assert_log_line(get_line(out, 0, line, sizeof(line)),
-                        "INFO", "Test02_LogFormat", __func__,
+                        "INFO", "AmcLoggerTest02_LogFormat", __func__,
                         "OddAccount", "-3", "{\"x\":1}");
     free(out);
 }

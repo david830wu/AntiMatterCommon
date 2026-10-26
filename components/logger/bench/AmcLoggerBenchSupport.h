@@ -5,7 +5,7 @@
  *
  * Methodology notes:
  *  - build Release (-O2; the CMake bench targets force -O2 regardless);
- *  - quiet machine, ideally pinned: `taskset -c 2 ./BenchEnqueue`;
+ *  - quiet machine, ideally pinned: `taskset -c 2 ./AmcLoggerBenchEnqueue`;
  *  - numbers on shared/virtualized hardware are indicative, not authoritative.
  *    The Design §10 targets assume production x86-64. */
 

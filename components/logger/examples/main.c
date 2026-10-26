@@ -1,8 +1,9 @@
 /* filename: main.c — the usage example from docs/Design.md §9.
  *
- * Run from the repository root (the config path is relative):
+ * Built as AmcLoggerExample; run it from components/logger (the config path is
+ * relative):
  *     cmake -S . -B build -DAMC_BUILD_EXAMPLES=ON && cmake --build build -j
- *     ./build/amc_example
+ *     cd components/logger && ../../build/bin/AmcLoggerExample
  *
  * Output goes to stdout and to ./log/$TODAY/MyApp.$PID.log per the config.
  * Note the DEBUG line does not appear: config/logger.yaml keeps module "main"
