@@ -1,4 +1,4 @@
-# AntiMatterLogger — Agreed Design (v2)
+# AmcLogger — Agreed Design (v2)
 
 **Status**: FINAL (2026-07-22). Consolidates the draft `InitDesign.md`, the decisions in
 `Answer1.md`, and the follow-up confirmations FQ1–FQ3 (recorded in §12). This document
@@ -24,6 +24,14 @@ static library for embedding into shared libraries (Architecture §14.16, §14.1
 `amc_logger_init` returning 1 on a repeat init (§14.18), and `$TODAY` expanding to
 `YYYYMMDD` instead of `YYYY-MM-DD` (§6, §12). This is the last release as a standalone
 repository: development continues in AntiMatterCommon as `components/logger`.
+
+**Amendment 5 (2026-10-26, agreed)**: the logger is a component of AntiMatterCommon and
+follows Common's strict naming convention. The JSON composer is `AMC_LOGGER_JSON` with
+`AMC_LOGGER_KV_*` helpers (was `AMC_JSON` / `AMC_KV_*`); every non-API name visible in the
+header or exported by the library carries `_internal_`; the worker thread is named
+`amc-logger`. The logger is versioned and packaged with Common
+(`find_package(AntiMatterCommon 0.5 COMPONENTS Logger)`). Architecture §14.19 lists the
+renames; behavior is otherwise unchanged.
 
 **Next step**: architecture design (module/file layout, public header, core data structures).
 
@@ -67,10 +75,11 @@ custom formatters (D3), binary/deferred logging, logging from signal handlers.
 - Language level `-std=gnu11`: C11 `stdatomic`, pthreads, `##__VA_ARGS__`,
   `__attribute__((format(printf, …)))` so payload format/argument mismatches are compile
   errors.
-- Build: CMake ≥ 3.20 producing a static library plus `AmcLogger.h`.
-  `-Wall -Wextra -Wformat=2 -Werror`.
-- Naming (Q21): public prefix `amc_` / `AMC_LOGGER_` (AMC = AntiMatterCommon, the parent
-  repo this library integrates into). Functions snake_case, file names PascalCase.
+- Build: part of the AntiMatterCommon CMake build (≥ 3.27), producing a static library
+  plus `AmcLogger.h`. `-Wall -Wextra -Wformat=2 -Werror`.
+- Naming (Q21, Amendment 5): public prefix `amc_logger_` / `AMC_LOGGER_` (AMC =
+  AntiMatterCommon, the repository this library is a component of); non-API names carry
+  `_internal_`. Functions snake_case, file names PascalCase.
 
 ## 3. Log line format
 
@@ -338,7 +347,7 @@ targets below leave two orders of magnitude of headroom.
 | Overall acceptance | same order of magnitude as spdlog async, default configs, same machine |
 
 `bench/` contains: disabled-call latency, enqueue latency percentiles, sustained
-throughput, and an **optional** spdlog comparison enabled by `-DAMC_BENCH_SPDLOG=ON`
+throughput, and an **optional** spdlog comparison enabled by `-DAMC_LOGGER_BENCH_SPDLOG=ON`
 (FetchContent; C++ used by the benchmark target only — the library itself stays pure C).
 
 ## 11. Testing and QA (Q20)
