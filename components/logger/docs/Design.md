@@ -4,11 +4,11 @@
 `Answer1.md`, and the follow-up confirmations FQ1–FQ3 (recorded in §12). This document
 supersedes `InitDesign.md`; where they differ, this document wins.
 
-**Amendment (2026-07-22, agreed)**: the `AMC_JSON` compile-time payload composer and
-`AMC_KV_*` typed helpers were added to §3 rule 6 and §8; runtime string escaping was
+**Amendment (2026-07-22, agreed)**: the `AMC_LOGGER_JSON` compile-time payload composer and
+`AMC_LOGGER_KV_*` typed helpers were added to §3 rule 6 and §8; runtime string escaping was
 deferred to v1.1 (§13).
 
-**Amendment 2 (2026-07-23, agreed — v1.1)**: `AMC_KV_STR_ESC` /
+**Amendment 2 (2026-07-23, agreed — v1.1)**: `AMC_LOGGER_KV_STR_ESC` /
 `amc_logger_json_escape()` runtime escaping delivered (§3 rule 6, §8); library
 version 0.2.0.
 
@@ -99,12 +99,12 @@ Rules:
    parsing and are not escaped.
 5. The payload format string must be a literal (compile-time checked via the printf format
    attribute).
-6. The recommended way to build payloads is the `AMC_JSON` composer: `(key, fmt, value…)`
-   tuples (or `AMC_KV_INT/I64/U64/F64/STR/BOOL` helpers) expand at compile time to the
+6. The recommended way to build payloads is the `AMC_LOGGER_JSON` composer: `(key, fmt, value…)`
+   tuples (or `AMC_LOGGER_KV_INT/I64/U64/F64/STR/BOOL` helpers) expand at compile time to the
    identical single format literal of the raw form — keys auto-quoted, structure generated,
    zero runtime cost, printf checking preserved. 1–16 pairs; raw tuples cover custom
    precision, nested objects, and constant fragments. The raw string form remains valid.
-   Plain `%s` values are not escaped; for arbitrary data, `AMC_KV_STR_ESC` (v1.1)
+   Plain `%s` values are not escaped; for arbitrary data, `AMC_LOGGER_KV_STR_ESC` (v1.1)
    JSON-escapes the value at runtime via `amc_logger_json_escape()` — quotes,
    backslashes and control bytes, so embedded newlines cannot break the one-line
    format; up to 16 escaped values per call, ~1 KB each, overlong values end with
@@ -275,10 +275,10 @@ AMC_LOGGER_CRITICAL(event, ...)       AMC_LOGGER_CRITICAL_ID(event, trader_id, .
 /* Level constants: DEBUG=0, INFO=1, WARN=2, ERROR=3, CRITICAL=4, OFF=5 */
 
 /* Payload composer (§3 rule 6): expands to the raw form's literal at compile time */
-AMC_JSON((key, fmt, value...) , ...)          /* 1..16 pairs                        */
-AMC_KV_INT(key, v)   AMC_KV_I64(key, v)   AMC_KV_U64(key, v)
-AMC_KV_F64(key, v)   AMC_KV_STR(key, v)   AMC_KV_BOOL(key, v)
-AMC_KV_STR_ESC(key, v)                        /* v1.1: runtime JSON escaping        */
+AMC_LOGGER_JSON((key, fmt, value...) , ...)          /* 1..16 pairs                        */
+AMC_LOGGER_KV_INT(key, v)   AMC_LOGGER_KV_I64(key, v)   AMC_LOGGER_KV_U64(key, v)
+AMC_LOGGER_KV_F64(key, v)   AMC_LOGGER_KV_STR(key, v)   AMC_LOGGER_KV_BOOL(key, v)
+AMC_LOGGER_KV_STR_ESC(key, v)                        /* v1.1: runtime JSON escaping        */
 const char *amc_logger_json_escape(const char *s);   /* the escaping primitive      */
 ```
 

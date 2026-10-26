@@ -1,5 +1,5 @@
-#ifndef AMC_BENCH_SUPPORT_H_
-#define AMC_BENCH_SUPPORT_H_
+#ifndef AMC_LOGGER_BENCH_SUPPORT_H_
+#define AMC_LOGGER_BENCH_SUPPORT_H_
 
 /* Shared helpers for the AmcLogger benchmark harness.
  *
@@ -38,4 +38,4 @@ static inline void bench_write_config(const char *path, const char *content)
     fclose(fp);
 }
 
-#endif /* AMC_BENCH_SUPPORT_H_ */
+#endif /* AMC_LOGGER_BENCH_SUPPORT_H_ */

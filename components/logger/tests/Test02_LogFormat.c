@@ -23,8 +23,8 @@
 #include "TestSupport.h"
 #include "TestHelperModule.h"
 
-void setUp(void)   { amc_internal_test_reset(); }
-void tearDown(void){ amc_internal_test_reset(); amc_release_all_streams(); }
+void setUp(void)   { amc_logger_internal_test_reset(); }
+void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
 
 /* MODULE comes from the source file: this file logs as "Test02_LogFormat",
  * the helper file logs as "TestHelperModule" — automatically. */
@@ -38,10 +38,10 @@ static void test_ModuleIsThePerFileIdentity(void)
     char *out = release_stdout();
 
     char line[512];
-    amc_assert_log_line(amc_get_line(out, 0, line, sizeof(line)),
+    assert_log_line(get_line(out, 0, line, sizeof(line)),
                         "INFO", "Test02_LogFormat", __func__,
                         "FromChapterFile", "-", "{}");
-    amc_assert_log_line(amc_get_line(out, 1, line, sizeof(line)),
+    assert_log_line(get_line(out, 1, line, sizeof(line)),
                         "INFO", "TestHelperModule", "helper_module_log_info",
                         "HelperEvent", "-", "{\"value\":7}");
     free(out);
@@ -62,7 +62,7 @@ static void test_FunctionFieldIsTheEnclosingFunction(void)
     char *out = release_stdout();
 
     char line[512];
-    amc_assert_log_line(amc_get_line(out, 0, line, sizeof(line)),
+    assert_log_line(get_line(out, 0, line, sizeof(line)),
                         "INFO", "Test02_LogFormat", "log_from_a_named_function",
                         "InsideNamedFunction", "-", "{}");
     free(out);
@@ -80,7 +80,7 @@ static void test_PayloadIsPrintfComposed(void)
     char *out = release_stdout();
 
     char line[512];
-    amc_assert_log_line(amc_get_line(out, 0, line, sizeof(line)),
+    assert_log_line(get_line(out, 0, line, sizeof(line)),
                         "INFO", "Test02_LogFormat", __func__, "OrderAccepted", "-",
                         "{\"order\":{\"volume\":1200,\"price\":99.50},\"tag\":\"opening\"}");
     free(out);
@@ -96,7 +96,7 @@ static void test_TraderIdIsAnyInt(void)
     char *out = release_stdout();
 
     char line[512];
-    amc_assert_log_line(amc_get_line(out, 0, line, sizeof(line)),
+    assert_log_line(get_line(out, 0, line, sizeof(line)),
                         "INFO", "Test02_LogFormat", __func__,
                         "OddAccount", "-3", "{\"x\":1}");
     free(out);
@@ -114,8 +114,8 @@ static void test_TimestampsAreNonDecreasingText(void)
     char *out = release_stdout();
 
     char l0[512], l1[512];
-    amc_get_line(out, 0, l0, sizeof(l0));
-    amc_get_line(out, 1, l1, sizeof(l1));
+    get_line(out, 0, l0, sizeof(l0));
+    get_line(out, 1, l1, sizeof(l1));
     TEST_ASSERT_TRUE(memcmp(l0 + 1, l1 + 1, 26) <= 0);
     free(out);
 }

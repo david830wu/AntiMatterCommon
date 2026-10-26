@@ -18,12 +18,12 @@
 
 #include "TestSupport.h"
 
-void setUp(void)   { amc_internal_test_reset(); }
-void tearDown(void){ amc_internal_test_reset(); amc_release_all_streams(); }
+void setUp(void)   { amc_logger_internal_test_reset(); }
+void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
 
 static void test_StrippedLevelsProduceNothingEvenWhenRuntimeEnabled(void)
 {
-    amc_write_file("cfg.yaml", "default_level: DEBUG\n");
+    write_file("cfg.yaml", "default_level: DEBUG\n");
     capture_stdout();
     amc_logger_init("cfg.yaml");
     AMC_LOGGER_DEBUG("CompiledOut");
@@ -32,8 +32,8 @@ static void test_StrippedLevelsProduceNothingEvenWhenRuntimeEnabled(void)
     amc_logger_shutdown();
     char *out = release_stdout();
 
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines(out));
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(out, "StillHere"));
+    TEST_ASSERT_EQUAL_INT(1, count_lines(out));
+    TEST_ASSERT_EQUAL_INT(1, count_lines_containing(out, "StillHere"));
     free(out);
 }
 

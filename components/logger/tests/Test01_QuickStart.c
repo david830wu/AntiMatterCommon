@@ -21,8 +21,8 @@
 
 #include "TestSupport.h"
 
-void setUp(void)   { amc_internal_test_reset(); }
-void tearDown(void){ amc_internal_test_reset(); amc_release_all_streams(); }
+void setUp(void)   { amc_logger_internal_test_reset(); }
+void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
 
 /* The smallest possible program: one line in, one line out. */
 static void test_MinimalUse_InitLogShutdown(void)
@@ -33,9 +33,9 @@ static void test_MinimalUse_InitLogShutdown(void)
     TEST_ASSERT_EQUAL_INT(0, amc_logger_shutdown());
     char *out = release_stdout();
 
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines(out));
+    TEST_ASSERT_EQUAL_INT(1, count_lines(out));
     char line[512];
-    amc_assert_log_line(amc_get_line(out, 0, line, sizeof(line)),
+    assert_log_line(get_line(out, 0, line, sizeof(line)),
                         "INFO", "Test01_QuickStart", __func__,
                         "HelloLogger", "-", "{\"greeting\":\"hello\"}");
     free(out);
@@ -56,20 +56,20 @@ static void test_OneMacroPerLevel_DefaultLevelIsInfo(void)
     amc_logger_shutdown();
     char *out = release_stdout();
 
-    TEST_ASSERT_EQUAL_INT(4, amc_count_lines(out));
-    TEST_ASSERT_EQUAL_INT(0, amc_count_lines_containing(out, "[DEBUG]"));
+    TEST_ASSERT_EQUAL_INT(4, count_lines(out));
+    TEST_ASSERT_EQUAL_INT(0, count_lines_containing(out, "[DEBUG]"));
 
     char line[512];
-    amc_assert_log_line(amc_get_line(out, 0, line, sizeof(line)),
+    assert_log_line(get_line(out, 0, line, sizeof(line)),
                         "INFO", "Test01_QuickStart", __func__,
                         "PrintPi", "-", "{\"pi\":3.1415926}");
-    amc_assert_log_line(amc_get_line(out, 1, line, sizeof(line)),
+    assert_log_line(get_line(out, 1, line, sizeof(line)),
                         "WARN", "Test01_QuickStart", __func__,
                         "VagueAnswer", "-", "{\"answer\":42}");
-    amc_assert_log_line(amc_get_line(out, 2, line, sizeof(line)),
+    assert_log_line(get_line(out, 2, line, sizeof(line)),
                         "ERROR", "Test01_QuickStart", __func__,
                         "InstrumentError", "-", "{\"instrument\":\"000042\"}");
-    amc_assert_log_line(amc_get_line(out, 3, line, sizeof(line)),
+    assert_log_line(get_line(out, 3, line, sizeof(line)),
                         "CRITICAL", "Test01_QuickStart", __func__,
                         "TypeMisMatch", "-", "{\"lhs\":\"cat\",\"rhs\":\"fruit\"}");
     free(out);
@@ -86,7 +86,7 @@ static void test_PayloadIsOptional_EmptyRendersEmptyJson(void)
     char *out = release_stdout();
 
     char line[512];
-    amc_assert_log_line(amc_get_line(out, 0, line, sizeof(line)),
+    assert_log_line(get_line(out, 0, line, sizeof(line)),
                         "WARN", "Test01_QuickStart", __func__,
                         "JustAnEvent", "-", "{}");
     free(out);
@@ -104,10 +104,10 @@ static void test_TraderIdVariants(void)
     char *out = release_stdout();
 
     char line[512];
-    amc_assert_log_line(amc_get_line(out, 0, line, sizeof(line)),
+    assert_log_line(get_line(out, 0, line, sizeof(line)),
                         "INFO", "Test01_QuickStart", __func__,
                         "ExtractorInit", "100", "{\"value\":42}");
-    amc_assert_log_line(amc_get_line(out, 1, line, sizeof(line)),
+    assert_log_line(get_line(out, 1, line, sizeof(line)),
                         "INFO", "Test01_QuickStart", __func__,
                         "NoAccount", "-", "{}");
     free(out);

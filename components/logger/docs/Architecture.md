@@ -29,7 +29,7 @@ you skim the rest. §15 proposes the implementation order.
 ```
 
 Five internal modules, one public header. All state lives in one static global
-(`g_amc`) plus one static registry; there is no dynamic sink vector and no per-logger
+(`amc_logger_internal_global`) plus one static registry; there is no dynamic sink vector and no per-logger
 state beyond a level and a name.
 
 ## 2. Repository layout
@@ -40,8 +40,8 @@ AntiMatterLogger/
 ├── include/
 │   └── AmcLogger.h            # the only public header (full listing in §3)
 ├── src/
-│   ├── AmcLoggerInternal.h    # shared internal structs/decls (amc_internal_* namespace)
-│   ├── AmcLoggerCore.c        # g_amc, init/shutdown/flush/stats, resolve, amc_logger_log
+│   ├── AmcLoggerInternal.h    # shared internal structs/decls (amc_logger_internal_* namespace)
+│   ├── AmcLoggerCore.c        # amc_logger_internal_global, init/shutdown/flush/stats, resolve, amc_logger_internal_log
 │   ├── AmcLoggerQueue.c       # MPSC ring, enqueue policies, worker thread, flush protocol
 │   ├── AmcLoggerRender.c      # line renderer, timestamp cache, truncation
 │   ├── AmcLoggerSink.c        # path expansion, mkdir -p, open/write/flush/close, error report
@@ -115,44 +115,44 @@ void amc_logger_get_stats(struct amc_logger_stats *out);   /* callable at any ti
 
 /* Public hot-path prefix of a logger. `level` is the only field the macros read.
  * The implementation extends this struct internally; treat it as read-only. */
-struct amc_logger {
+struct amc_logger_internal_handle {
     _Atomic int level;
 };
 
 /* Derives the module name from `file`, returns the (auto-created) logger.
  * Returns NULL before init / after shutdown; the first pre-init call prints a
  * one-time stderr warning (Design FQ1). */
-struct amc_logger *amc_logger_resolve(const char *file);
+struct amc_logger_internal_handle *amc_logger_internal_resolve(const char *file);
 
-void amc_logger_log(struct amc_logger *logger, int level,
+void amc_logger_internal_log(struct amc_logger_internal_handle *logger, int level,
                     const char *function, const char *event,
                     int has_id, int trader_id,
                     const char *payload_fmt, ...)
                     __attribute__((format(printf, 7, 8)));
 
-#define AMC_LOGGER_LOG_IMPL_(level_, event_, has_id_, id_, ...)               \
+#define AMC_LOGGER_INTERNAL_LOG(level_, event_, has_id_, id_, ...)               \
     do {                                                                      \
-        static struct amc_logger *_Atomic amc_site_logger_;                   \
-        struct amc_logger *amc_lg_ = atomic_load_explicit(                    \
-            &amc_site_logger_, memory_order_acquire);                        \
-        if (amc_lg_ == (struct amc_logger *)0) {                              \
-            amc_lg_ = amc_logger_resolve(__FILE__);                           \
-            if (amc_lg_ != (struct amc_logger *)0)                            \
-                atomic_store_explicit(&amc_site_logger_, amc_lg_,             \
+        static struct amc_logger_internal_handle *_Atomic amc_logger_internal_site;                   \
+        struct amc_logger_internal_handle *amc_logger_internal_lg = atomic_load_explicit(                    \
+            &amc_logger_internal_site, memory_order_acquire);                        \
+        if (amc_logger_internal_lg == (struct amc_logger_internal_handle *)0) {                              \
+            amc_logger_internal_lg = amc_logger_internal_resolve(__FILE__);                           \
+            if (amc_logger_internal_lg != (struct amc_logger_internal_handle *)0)                            \
+                atomic_store_explicit(&amc_logger_internal_site, amc_logger_internal_lg,             \
                                       memory_order_release);                  \
         }                                                                     \
-        if (amc_lg_ != (struct amc_logger *)0 &&                              \
-            (level_) >= atomic_load_explicit(&amc_lg_->level,                 \
+        if (amc_logger_internal_lg != (struct amc_logger_internal_handle *)0 &&                              \
+            (level_) >= atomic_load_explicit(&amc_logger_internal_lg->level,                 \
                                              memory_order_relaxed))           \
-            amc_logger_log(amc_lg_, (level_), __func__, (event_),             \
+            amc_logger_internal_log(amc_logger_internal_lg, (level_), __func__, (event_),             \
                            (has_id_), (id_), "" __VA_ARGS__);                 \
     } while (0)
 
 #if AMC_LOGGER_ACTIVE_LEVEL <= AMC_LOGGER_LEVEL_DEBUG
 #define AMC_LOGGER_DEBUG(event_, ...)                                         \
-    AMC_LOGGER_LOG_IMPL_(AMC_LOGGER_LEVEL_DEBUG, (event_), 0, 0, ##__VA_ARGS__)
+    AMC_LOGGER_INTERNAL_LOG(AMC_LOGGER_LEVEL_DEBUG, (event_), 0, 0, ##__VA_ARGS__)
 #define AMC_LOGGER_DEBUG_ID(event_, trader_id_, ...)                          \
-    AMC_LOGGER_LOG_IMPL_(AMC_LOGGER_LEVEL_DEBUG, (event_), 1, (trader_id_), ##__VA_ARGS__)
+    AMC_LOGGER_INTERNAL_LOG(AMC_LOGGER_LEVEL_DEBUG, (event_), 1, (trader_id_), ##__VA_ARGS__)
 #else
 #define AMC_LOGGER_DEBUG(event_, ...)                ((void)0)
 #define AMC_LOGGER_DEBUG_ID(event_, trader_id_, ...) ((void)0)
@@ -187,32 +187,32 @@ Notes on deliberate details:
 
 ```c
 /* ---- limits (config validation ranges in §11) ---- */
-#define AMC_MODULE_MAX        128     /* module name incl. NUL                  */
-#define AMC_MSG_SIZE_MIN      256     /* max_message_size lower bound           */
-#define AMC_MSG_SIZE_MAX      8192    /* upper bound; also sync-path stack buf  */
+#define AMC_LOGGER_INTERNAL_MODULE_MAX        128     /* module name incl. NUL                  */
+#define AMC_LOGGER_INTERNAL_MSG_SIZE_MIN      256     /* max_message_size lower bound           */
+#define AMC_LOGGER_INTERNAL_MSG_SIZE_MAX      8192    /* upper bound; also sync-path stack buf  */
 #define AMC_WORKER_BATCH_MAX  256     /* messages per worker checkout           */
-#define AMC_FILE_IOBUF_SIZE   65536   /* setvbuf buffer for the file sink       */
-#define AMC_TRUNC_MARKER      "...(truncated)"
+#define AMC_LOGGER_INTERNAL_FILE_IOBUF_SIZE   65536   /* setvbuf buffer for the file sink       */
+#define AMC_LOGGER_INTERNAL_TRUNC_MARKER      "...(truncated)"
 
-enum amc_state    { AMC_UNINIT = 0, AMC_READY, AMC_SHUTDOWN };
-enum amc_policy   { AMC_POLICY_BLOCK, AMC_POLICY_OVERRUN_OLDEST, AMC_POLICY_DISCARD_NEW };
+enum amc_logger_internal_state    { AMC_LOGGER_INTERNAL_UNINIT = 0, AMC_LOGGER_INTERNAL_READY, AMC_LOGGER_INTERNAL_SHUTDOWN };
+enum amc_logger_internal_policy   { AMC_LOGGER_INTERNAL_POLICY_BLOCK, AMC_LOGGER_INTERNAL_POLICY_OVERRUN_OLDEST, AMC_LOGGER_INTERNAL_POLICY_DISCARD_NEW };
 
 /* ---- logger: public prefix + internal extension, one allocation ---- */
-struct amc_logger_full {
-    struct amc_logger        pub;      /* MUST be first (offset 0, _Static_assert'ed) */
+struct amc_logger_internal_module {
+    struct amc_logger_internal_handle        pub;      /* MUST be first (offset 0, _Static_assert'ed) */
     char                    *module;   /* owned copy, stripped basename               */
-    struct amc_logger_full  *next;     /* registry chain                              */
+    struct amc_logger_internal_module  *next;     /* registry chain                              */
 };
 
 /* ---- registry: permanent, mutex-protected, slow path only ---- */
 struct amc_registry {
     pthread_mutex_t          mtx;      /* PTHREAD_MUTEX_INITIALIZER (works pre-init)  */
-    struct amc_logger_full  *head;
+    struct amc_logger_internal_module  *head;
 };
 
 /* ---- message: fixed-size slot header + payload bytes ---- */
-struct amc_msg {
-    struct timespec ts;                /* CLOCK_REALTIME captured in amc_logger_log   */
+struct amc_logger_internal_msg {
+    struct timespec ts;                /* CLOCK_REALTIME captured in amc_logger_internal_log   */
     const char     *module;            /* -> logger_full.module (permanent)           */
     const char     *function;          /* __func__, static storage                    */
     const char     *event;             /* string literal (Design D3 contract)         */
@@ -222,11 +222,11 @@ struct amc_msg {
     uint8_t         truncated;         /* payload hit its cap at capture              */
     uint16_t        payload_len;
     /* payload bytes follow in the slot; slot stride =
-       align_up(sizeof(struct amc_msg) + cfg.max_message_size, 64) */
+       align_up(sizeof(struct amc_logger_internal_msg) + cfg.max_message_size, 64) */
 };
 
 /* ---- queue: bounded MPSC ring, mutex + condvars ---- */
-struct amc_queue {
+struct amc_logger_internal_queue {
     pthread_mutex_t mtx;
     pthread_cond_t  not_empty;         /* worker + flush requests wait here           */
     pthread_cond_t  not_full;          /* producers wait here under `block`           */
@@ -241,7 +241,7 @@ struct amc_queue {
 };
 
 /* ---- sink ---- */
-struct amc_sink {
+struct amc_logger_internal_sink {
     pthread_mutex_t mtx;
     FILE           *fp;                /* stdout, or fopen'd file                     */
     char           *iobuf;             /* file sink only (never setvbuf on stdout)    */
@@ -251,30 +251,30 @@ struct amc_sink {
 };
 
 /* ---- parsed configuration (immutable after init) ---- */
-struct amc_config {
+struct amc_logger_internal_config {
     int  default_level, async, critical_sync;
     int  utc_offset_hours;
-    enum amc_policy policy;
+    enum amc_logger_internal_policy policy;
     uint32_t queue_size, max_message_size, flush_every_ms;
     int  has_stdout, has_file;
     char *file_path_template;          /* pre-expansion, owned                        */
-    struct amc_cfg_logger { char *module; int level;
-                            struct amc_cfg_logger *next; } *loggers;
+    struct amc_logger_internal_cfg_logger { char *module; int level;
+                            struct amc_logger_internal_cfg_logger *next; } *loggers;
 };
 
 /* ---- the global ---- */
-struct amc_global {
-    _Atomic int              state;    /* enum amc_state                              */
-    struct amc_config        cfg;
-    struct amc_sink          sinks[2]; /* [0]=stdout, [1]=file; fixed, no vector      */
+struct amc_logger_internal_global {
+    _Atomic int              state;    /* enum amc_logger_internal_state                              */
+    struct amc_logger_internal_config        cfg;
+    struct amc_logger_internal_sink          sinks[2]; /* [0]=stdout, [1]=file; fixed, no vector      */
     int                      sink_count;
-    struct amc_queue         queue;
+    struct amc_logger_internal_queue         queue;
     pthread_t                worker;
     _Atomic uint64_t         st_enqueued, st_dropped_new, st_overwritten,
                              st_blocks, st_truncated, st_write_errors, st_high_water;
     _Atomic int              warned_before_init;   /* FQ1 one-shot                    */
 };
-extern struct amc_global g_amc;        /* BSS, zero-initialized                       */
+extern struct amc_logger_internal_global amc_logger_internal_global;        /* BSS, zero-initialized                       */
 ```
 
 Deliberate absences: no per-message logger pointer (the worker needs only what the slot
@@ -287,10 +287,10 @@ allocation after init on any path.
 
 | Primitive | Protects | Held / used by |
 | --------- | -------- | -------------- |
-| `registry.mtx` | logger list lookup/create; OFF sweep at shutdown | `amc_logger_resolve` (once per call site), init, shutdown |
+| `registry.mtx` | logger list lookup/create; OFF sweep at shutdown | `amc_logger_internal_resolve` (once per call site), init, shutdown |
 | `queue.mtx` | ring indices, seq counters, stop flag, policy waits | producers (enqueue), worker (checkout/ack), `amc_logger_flush`, shutdown |
 | `sink.mtx` (each) | `fp`, `dirty`, `closed` — every write/flush/close | worker, `critical_sync` writers, sync-mode writers, flush, shutdown |
-| `g_amc.state` (atomic) | lifecycle gate | everyone (acquire load / release store) |
+| `amc_logger_internal_global.state` (atomic) | lifecycle gate | everyone (acquire load / release store) |
 | `logger.pub.level` (atomic) | runtime threshold | macros (relaxed load), shutdown (relaxed store `OFF`) |
 | call-site static ptr (atomic) | cached logger | macros (acquire load / release store) |
 | `st_*` counters (atomic) | statistics | all paths (relaxed), `amc_logger_get_stats` (relaxed) |
@@ -313,16 +313,16 @@ construction.
   enqueue into a live-but-unconsumed ring (message dropped and counted) or hit a sink
   whose `closed` flag it observes under the sink mutex (write skipped). No use-after-free
   exists on any interleaving. Memory intentionally kept: registry + loggers + queue slots
-  (reachable from `g_amc`, so leak checkers stay quiet).
+  (reachable from `amc_logger_internal_global`, so leak checkers stay quiet).
 
 ## 6. Control flows
 
-### 6.1 `amc_logger_log` (producer, hot path)
+### 6.1 `amc_logger_internal_log` (producer, hot path)
 
 ```
-capture:   clock_gettime(CLOCK_REALTIME); build amc_msg header on stack
+capture:   clock_gettime(CLOCK_REALTIME); build amc_logger_internal_msg header on stack
 payload:   fmt[0]=='\0'  → payload = "{}" (FQ3)
-           else vsnprintf into stack buf[AMC_MSG_SIZE_MAX], cap = cfg.max_message_size;
+           else vsnprintf into stack buf[AMC_LOGGER_INTERNAL_MSG_SIZE_MAX], cap = cfg.max_message_size;
            ret >= cap → truncated = 1, st_truncated++
 dispatch:  !cfg.async                        → §6.2 sync write
            level==CRITICAL && critical_sync  → §6.2 direct write (same code path)
@@ -360,7 +360,7 @@ index arithmetic — tens of nanoseconds typically.
 ### 6.4 Worker loop (single consumer)
 
 ```
-block all signals; pthread_setname("amc-worker")
+block all signals; pthread_setname("amc-logger")
 loop:
   lock(queue.mtx)
     while count==0 and !stop and flush_req<=seq_flushed:
@@ -409,8 +409,8 @@ function just fflushes both sinks under their mutexes. Returns −1 unless state
    holds, the FIRST config stays in effect, nothing is reconfigured — §14.18).
    `state == SHUTDOWN` → stderr diagnostic, return −1 (the library stays down).
    A failed init stays UNINIT and is retryable.
-2. `config_path == NULL` → `amc_internal_config_defaults()`; else read file (size-capped),
-   `amc_internal_config_parse()` → on error print `amc_logger: config: <file>:<line>: <msg>`,
+2. `config_path == NULL` → `amc_logger_internal_config_defaults()`; else read file (size-capped),
+   `amc_logger_internal_config_parse()` → on error print `amc_logger: config: <file>:<line>: <msg>`,
    return −1.
 3. Open sinks: stdout (flag only), file (expand `$TODAY`/`$PID` → `mkdir -p` prefix →
    `fopen(…, "a")` → `setvbuf` 64 KB). Any failure → close what opened, return −1.
@@ -447,7 +447,7 @@ drain target).
   cut); `st_truncated++` — this catches header+payload overflow even when the payload
   alone fit its capture cap.
 - Testing seam: with `-DAMC_LOGGER_TESTING`, the clock is read through an overridable
-  hook, and `amc_internal_test_reset()` tears everything down to `AMC_UNINIT` so one
+  hook, and `amc_logger_internal_test_reset()` tears everything down to `AMC_LOGGER_INTERNAL_UNINIT` so one
   test binary can simulate many process lifetimes (§14.12). Production builds call
   `clock_gettime` directly and have no reset.
 
@@ -471,9 +471,9 @@ drain target).
 A pure function, no globals — the unit-test workhorse:
 
 ```c
-int amc_internal_config_parse(const char *text, size_t len, const char *diag_name,
-                              struct amc_config *out, char *err, size_t err_sz);
-void amc_internal_config_defaults(struct amc_config *out);
+int amc_logger_internal_config_parse(const char *text, size_t len, const char *diag_name,
+                              struct amc_logger_internal_config *out, char *err, size_t err_sz);
+void amc_logger_internal_config_defaults(struct amc_logger_internal_config *out);
 ```
 
 Two layers:
@@ -498,7 +498,7 @@ empty document (FQ2): defaults, stdout only.
 
 ## 10. Errors and observability
 
-- **Before-init warning** (FQ1): `amc_logger_resolve` in state UNINIT does a relaxed
+- **Before-init warning** (FQ1): `amc_logger_internal_resolve` in state UNINIT does a relaxed
   exchange on `warned_before_init`; the first caller prints
   `amc_logger: log call before amc_logger_init(); messages dropped` to stderr. Returns
   NULL (call site stays uncached and retries after init).
@@ -519,7 +519,7 @@ empty document (FQ2): defaults, stdout only.
 | `async` | true/false | true |
 | `queue_size` | 16 … 1,048,576 | 8192 |
 | `queue_full_policy` | block, overrun_oldest, discard_new | block |
-| `max_message_size` | 256 … 8192 (`AMC_MSG_SIZE_MIN/MAX`, §14.4) | 2048 |
+| `max_message_size` | 256 … 8192 (`AMC_LOGGER_INTERNAL_MSG_SIZE_MIN/MAX`, §14.4) | 2048 |
 | `flush_every_ms` | 0 (off) … 3,600,000 | 1000 |
 | `utc_offset_hours` | −12 … +14 | 8 |
 | `critical_sync` | true/false | false |
@@ -527,7 +527,7 @@ empty document (FQ2): defaults, stdout only.
 | module name | ≤ 127 chars | — |
 | worker batch | ≤ 256 msgs / 256 KB private buffer | — |
 | config file size | ≤ 1 MB | — |
-| queue memory | `queue_size × (sizeof(amc_msg)+max_message_size)` → defaults ≈ 17 MB | — |
+| queue memory | `queue_size × (sizeof(amc_logger_internal_msg)+max_message_size)` → defaults ≈ 17 MB | — |
 
 ## 12. Build system and CI
 
@@ -580,15 +580,15 @@ confined to that target). Measured results and the tail investigation: §14.13.
    reading ring slots after unlock. Zero-copy checkout is unsafe against
    `overrun_oldest` overwriting in-flight slots; the copy (~15 ns/msg typical) buys
    policy-independent correctness. Zero-copy is a listed future optimization.
-3. **Public struct exposure**: `struct amc_logger { _Atomic int level; }` appears in the
+3. **Public struct exposure**: `struct amc_logger_internal_handle { _Atomic int level; }` appears in the
    public header (extended internally via containment) so the disabled-call check inlines
-   to one relaxed load — required for the ≤ ~2 ns target. `amc_logger_resolve` /
-   `amc_logger_log` are likewise public-by-necessity macro plumbing (Design §8 listed
+   to one relaxed load — required for the ≤ ~2 ns target. `amc_logger_internal_resolve` /
+   `amc_logger_internal_log` are likewise public-by-necessity macro plumbing (Design §8 listed
    only the user-facing four functions).
 4. **`max_message_size` range is [256, 8192]** — new upper bound so sync-mode and
    `critical_sync` paths can use fixed 8 KB stack buffers instead of dynamic allocation.
 5. **Shutdown never frees** logger structs, the registry, or queue slot memory (still
-   reachable from `g_amc`) — this is what makes "late calls are no-ops" airtight without
+   reachable from `amc_logger_internal_global`) — this is what makes "late calls are no-ops" airtight without
    refcounting. OS resources (thread, files) are released.
 6. **The header is C-only in v1** (`_Atomic` in the macro). C++ inclusion support is
    parked (a `__cplusplus` branch using `std::atomic` or `__atomic` builtins is easy to
@@ -607,9 +607,9 @@ confined to that target). Measured results and the tail investigation: §14.13.
 11. **The macros prepend a 1-byte sentinel** (`"\1" __VA_ARGS__`) to the payload format
     instead of an empty string. Same literal-enforcement trick, but the literal is never
     zero-length — otherwise every payload-less call would trigger
-    `-Wformat-zero-length` in user builds compiled with `-Wall`. `amc_logger_log`
+    `-Wformat-zero-length` in user builds compiled with `-Wall`. `amc_logger_internal_log`
     skips the sentinel byte.
-12. **`amc_internal_test_reset()`** (AMC_LOGGER_TESTING only) tears down to `AMC_UNINIT`
+12. **`amc_logger_internal_test_reset()`** (AMC_LOGGER_TESTING only) tears down to `AMC_LOGGER_INTERNAL_UNINIT`
     so test binaries can simulate many process lifetimes. Registry loggers deliberately
     survive resets — call-site caches must stay valid — so `amc_logger_init` first
     sweeps every existing logger to the new `default_level` before applying overrides.
@@ -646,7 +646,7 @@ confined to that target). Measured results and the tail investigation: §14.13.
       regime differs: sparse calls pay one worker wake (~3 µs, the paced bench
       phase), micro-burst calls pay ~200 ns, and the worker's idle spin costs ~5% of
       one core.
-14. **`AMC_JSON` payload composer** (agreed amendment, Design §3 rule 6). A FOR-EACH
+14. **`AMC_LOGGER_JSON` payload composer** (agreed amendment, Design §3 rule 6). A FOR-EACH
     preprocessor block in the public header turns `(key, fmt, value…)` tuples into the
     raw form's exact single format literal via string concatenation — braces, quoted
     keys, colons and commas are generated, so malformed payload structure becomes a
@@ -655,10 +655,10 @@ confined to that target). Measured results and the tail investigation: §14.13.
     literal-only contract preserved. Value expansion embeds a leading `, ##__VA_ARGS__`
     so tuples may carry zero value arguments (constant fragments like
     `("armed", "true")`). Capacity 1–16 pairs; 17+ dispatches to the deliberately
-    undefined `AMC_JSON_FMT_TOO_MANY_KEYS`, making the compile error self-explanatory.
-    Typed sugar `AMC_KV_INT/I64/U64/F64/STR/BOOL` expands to plain tuples. No `src/`
+    undefined `AMC_LOGGER_INTERNAL_JSON_FMT_TOO_MANY_KEYS`, making the compile error self-explanatory.
+    Typed sugar `AMC_LOGGER_KV_INT/I64/U64/F64/STR/BOOL` expands to plain tuples. No `src/`
     changes for the composer itself.
-15. **`AMC_KV_STR_ESC` runtime escaping** (v1.1, Design Amendment 2). The one runtime
+15. **`AMC_LOGGER_KV_STR_ESC` runtime escaping** (v1.1, Design Amendment 2). The one runtime
     piece of the payload story: `amc_logger_json_escape()` escapes into a per-thread
     ring of 16 × 1 KB **static TLS** buffers — 16 slots matches the composer's pair
     cap so every escaped value in one call gets its own buffer; static TLS (rather
@@ -682,7 +682,7 @@ confined to that target). Measured results and the tail investigation: §14.13.
     NUMA: the ring's first-touch deliberately stays with the `amc_logger_init`
     caller so slot pages land near the producers, favoring enqueue latency over
     drain-side locality — initialize on the node your producers run on. Verified
-    black-box in Test07 via `/proc/self/task/<tid>/comm == "amc-worker"` →
+    black-box in Test07 via `/proc/self/task/<tid>/comm == "amc-logger"` →
     `Cpus_allowed_list`; the macOS CI legs verify the warn-and-run path. Version
     0.3.0.
 
@@ -705,18 +705,18 @@ confined to that target). Measured results and the tail investigation: §14.13.
 (`amc_logger_init/shutdown/flush`, stats, `amc_logger_json_escape`, the level defines)
 is wrapped in `extern "C"` and usable from C++ hosts that own the logger lifecycle
 while C libraries emit the lines (the AntiMatterFusion→AMM integration). The hot-path
-`struct amc_logger` and the `AMC_LOGGER_*` / `AMC_JSON` macros keep their C11
+`struct amc_logger_internal_handle` and the `AMC_LOGGER_*` / `AMC_LOGGER_JSON` macros keep their C11
 `_Atomic` implementation and remain gated behind `#ifndef __cplusplus` — logging call
 sites must still be C translation units. Design.md's "public header is C-only" v1
 statement is superseded for the lifecycle surface only.
 
 ### 14.17 C++-capable log macros (v3, 2026-08-06)
 
-Extends §14.16: the `AMC_LOGGER_*` / `AMC_JSON` macros now compile in C++ too. The
-call-site cache and the hot-path `struct amc_logger.level` use per-language atomics
-(`_Atomic` in C, `std::atomic` in C++) behind the `AMC_SITE_*_` / `AMC_LEVEL_LOAD_`
+Extends §14.16: the `AMC_LOGGER_*` / `AMC_LOGGER_JSON` macros now compile in C++ too. The
+call-site cache and the hot-path `struct amc_logger_internal_handle.level` use per-language atomics
+(`_Atomic` in C, `std::atomic` in C++) behind the `AMC_SITE_*_` / `AMC_LOGGER_INTERNAL_LEVEL_LOAD`
 adapter macros; layout compatibility is pinned by C++ static_asserts (gcc/clang).
-The macro-plumbing runtime functions (`amc_logger_resolve/log/json_escape`) carry C
+The macro-plumbing runtime functions (`amc_logger_internal_resolve/log/json_escape`) carry C
 linkage in both languages. First C++ consumer: AntiMatterFusion's shared risk-rules
 header inlined into AMM's AlgoModel.cpp. Chapter tests unchanged and green (10/10);
 C++ compile+runtime smoke exercised at integration time.

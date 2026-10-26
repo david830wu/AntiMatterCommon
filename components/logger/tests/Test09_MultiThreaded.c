@@ -19,8 +19,8 @@
 
 #include <pthread.h>
 
-void setUp(void)   { amc_internal_test_reset(); }
-void tearDown(void){ amc_internal_test_reset(); amc_release_all_streams(); }
+void setUp(void)   { amc_logger_internal_test_reset(); }
+void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
 
 enum { THREADS = 4, PER_THREAD = 500 };
 
@@ -35,7 +35,7 @@ static void *producer(void *arg)
 static void test_ConcurrentProducersLoseNothingAndKeepPerThreadOrder(void)
 {
     unlink("mt.log");
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "queue_full_policy: block\n"          /* lossless under load */
         "sinks:\n"
         "  basic_file: \"./mt.log\"\n");
@@ -48,15 +48,15 @@ static void test_ConcurrentProducersLoseNothingAndKeepPerThreadOrder(void)
         pthread_join(th[t], NULL);
     amc_logger_shutdown();
 
-    char *file = amc_read_file("mt.log");
-    TEST_ASSERT_EQUAL_INT(THREADS * PER_THREAD, amc_count_app_lines(file));
+    char *file = read_file("mt.log");
+    TEST_ASSERT_EQUAL_INT(THREADS * PER_THREAD, count_app_lines(file));
 
     /* per-thread sequence numbers must be strictly increasing */
     int last_seen[THREADS];
     for (int t = 0; t < THREADS; t++)
         last_seen[t] = -1;
     char line[512];
-    for (int i = 0; amc_get_line(file, i, line, sizeof(line)); i++) {
+    for (int i = 0; get_line(file, i, line, sizeof(line)); i++) {
         const char *p = strstr(line, "]{\"t\":");
         if (!p)
             continue;

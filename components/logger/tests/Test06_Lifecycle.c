@@ -24,8 +24,8 @@
 
 #include "TestSupport.h"
 
-void setUp(void)   { amc_internal_test_reset(); }
-void tearDown(void){ amc_internal_test_reset(); amc_release_all_streams(); }
+void setUp(void)   { amc_logger_internal_test_reset(); }
+void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
 
 static void test_LoggingBeforeInit_DropsWithOneWarning(void)
 {
@@ -35,9 +35,9 @@ static void test_LoggingBeforeInit_DropsWithOneWarning(void)
     AMC_LOGGER_ERROR("TooEarly3");
     char *err = release_stderr();
 
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, amc_count_lines(err),
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, count_lines(err),
         "exactly one warning, no matter how many early calls");
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(err,
+    TEST_ASSERT_EQUAL_INT(1, count_lines_containing(err,
         "log call before amc_logger_init(); messages dropped"));
     free(err);
 
@@ -47,8 +47,8 @@ static void test_LoggingBeforeInit_DropsWithOneWarning(void)
     AMC_LOGGER_INFO("AfterInit");
     amc_logger_shutdown();
     char *out = release_stdout();
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines(out));
-    TEST_ASSERT_EQUAL_INT(0, amc_count_lines_containing(out, "TooEarly"));
+    TEST_ASSERT_EQUAL_INT(1, count_lines(out));
+    TEST_ASSERT_EQUAL_INT(0, count_lines_containing(out, "TooEarly"));
     free(out);
 }
 
@@ -64,7 +64,7 @@ static void test_InitAfterShutdownFails(void)
     capture_stderr();
     TEST_ASSERT_EQUAL_INT(-1, amc_logger_init(NULL));
     char *err = release_stderr();
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(err, "already shut down"));
+    TEST_ASSERT_EQUAL_INT(1, count_lines_containing(err, "already shut down"));
     free(err);
 }
 
@@ -84,9 +84,9 @@ static void test_SecondInitIsBenignRepeat_FirstStaysFunctional(void)
     char *out = release_stdout();
     char *err = release_stderr();
     /* the notice goes to STDOUT — nothing failed, so stderr stays clean */
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(out, "already initialized"));
-    TEST_ASSERT_EQUAL_INT(0, amc_count_lines(err));
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(out, "StillWorking"));
+    TEST_ASSERT_EQUAL_INT(1, count_lines_containing(out, "already initialized"));
+    TEST_ASSERT_EQUAL_INT(0, count_lines(err));
+    TEST_ASSERT_EQUAL_INT(1, count_lines_containing(out, "StillWorking"));
     free(out);
     free(err);
 }
@@ -107,8 +107,8 @@ static void test_LoggingAfterShutdownIsANoOp(void)
     AMC_LOGGER_CRITICAL("AfterClose");     /* dropped, silently and safely */
     char *out = release_stdout();
 
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines(out));
-    TEST_ASSERT_EQUAL_INT(0, amc_count_lines_containing(out, "AfterClose"));
+    TEST_ASSERT_EQUAL_INT(1, count_lines(out));
+    TEST_ASSERT_EQUAL_INT(0, count_lines_containing(out, "AfterClose"));
     free(out);
 }
 

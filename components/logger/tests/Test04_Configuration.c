@@ -18,13 +18,13 @@
 
 #include "TestSupport.h"
 
-void setUp(void)   { amc_internal_test_reset(); }
-void tearDown(void){ amc_internal_test_reset(); amc_release_all_streams(); }
+void setUp(void)   { amc_logger_internal_test_reset(); }
+void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
 
 /* the reference config loads cleanly */
 static void test_ReferenceConfigLoads(void)
 {
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "%YAML 1.2\n"
         "---\n"
         "# reference config, every key spelled out\n"
@@ -47,7 +47,7 @@ static void test_ReferenceConfigLoads(void)
     AMC_LOGGER_DEBUG("OverrideActive");   /* per-module DEBUG from the config */
     amc_logger_shutdown();
     char *out = release_stdout();
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(out, "OverrideActive"));
+    TEST_ASSERT_EQUAL_INT(1, count_lines_containing(out, "OverrideActive"));
     free(out);
 }
 
@@ -60,7 +60,7 @@ static void test_MissingFileFailsFast_ThenRetryWorks(void)
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "cannot read config 'no/such/file.yaml'"));
+        count_lines_containing(err, "cannot read config 'no/such/file.yaml'"));
     free(err);
 
     /* the failed init left the library uninitialized; a retry succeeds */
@@ -71,7 +71,7 @@ static void test_MissingFileFailsFast_ThenRetryWorks(void)
 /* a typo'd key names itself, with the file and line number */
 static void test_UnknownKeyIsRejectedWithFileAndLine(void)
 {
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "default_level: INFO\n"
         "que_size: 10\n");
     capture_stderr();
@@ -80,27 +80,27 @@ static void test_UnknownKeyIsRejectedWithFileAndLine(void)
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "cfg.yaml:2: unknown key 'que_size'"));
+        count_lines_containing(err, "cfg.yaml:2: unknown key 'que_size'"));
     free(err);
 }
 
 static void test_BadLevelNameIsRejected(void)
 {
-    amc_write_file("cfg.yaml", "default_level: LOUD\n");
+    write_file("cfg.yaml", "default_level: LOUD\n");
     capture_stderr();
     int rc = amc_logger_init("cfg.yaml");
     char *err = release_stderr();
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "cfg.yaml:1: unknown level 'LOUD'"));
+        count_lines_containing(err, "cfg.yaml:1: unknown level 'LOUD'"));
     free(err);
 }
 
 /* tabs in indentation are a classic YAML trap — rejected explicitly */
 static void test_TabsAreRejected(void)
 {
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "sinks:\n"
         "\tstdout: {}\n");
     capture_stderr();
@@ -109,14 +109,14 @@ static void test_TabsAreRejected(void)
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "cfg.yaml:2: tab character in indentation"));
+        count_lines_containing(err, "cfg.yaml:2: tab character in indentation"));
     free(err);
 }
 
 /* YAML features outside the documented subset fail loudly, never misparse */
 static void test_SequencesAreOutsideTheSubset(void)
 {
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "sinks:\n"
         "  - stdout\n");
     capture_stderr();
@@ -125,13 +125,13 @@ static void test_SequencesAreOutsideTheSubset(void)
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "cfg.yaml:2: sequences are not supported"));
+        count_lines_containing(err, "cfg.yaml:2: sequences are not supported"));
     free(err);
 }
 
 static void test_DuplicateKeysAreRejected(void)
 {
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "default_level: INFO\n"
         "default_level: DEBUG\n");
     capture_stderr();
@@ -140,13 +140,13 @@ static void test_DuplicateKeysAreRejected(void)
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "cfg.yaml:2: duplicate key 'default_level'"));
+        count_lines_containing(err, "cfg.yaml:2: duplicate key 'default_level'"));
     free(err);
 }
 
 static void test_UnknownSinkIsRejected(void)
 {
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "sinks:\n"
         "  syslog: {}\n");
     capture_stderr();
@@ -155,14 +155,14 @@ static void test_UnknownSinkIsRejected(void)
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "cfg.yaml:2: unknown sink 'syslog'"));
+        count_lines_containing(err, "cfg.yaml:2: unknown sink 'syslog'"));
     free(err);
 }
 
 /* only $TODAY and $PID exist; anything else in a path is an error */
 static void test_UnknownPathVariableIsRejected(void)
 {
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "sinks:\n"
         "  basic_file: \"./logs/$HOSTNAME/app.log\"\n");
     capture_stderr();
@@ -171,34 +171,34 @@ static void test_UnknownPathVariableIsRejected(void)
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "unknown variable '$HOSTNAME' in sink path"));
+        count_lines_containing(err, "unknown variable '$HOSTNAME' in sink path"));
     free(err);
 }
 
 static void test_OutOfRangeNumbersAreRejected(void)
 {
-    amc_write_file("cfg.yaml", "queue_size: 4\n");
+    write_file("cfg.yaml", "queue_size: 4\n");
     capture_stderr();
     int rc = amc_logger_init("cfg.yaml");
     char *err = release_stderr();
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "cfg.yaml:1: queue_size out of range"));
+        count_lines_containing(err, "cfg.yaml:1: queue_size out of range"));
     free(err);
 }
 
 /* worker_cpu (chapter 07) is bounded by the OS cpu-set width */
 static void test_WorkerCpuOutOfRangeRejected(void)
 {
-    amc_write_file("cfg.yaml", "worker_cpu: 1024\n");
+    write_file("cfg.yaml", "worker_cpu: 1024\n");
     capture_stderr();
     int rc = amc_logger_init("cfg.yaml");
     char *err = release_stderr();
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(err, "cfg.yaml:1: worker_cpu out of range (0..1023)"));
+        count_lines_containing(err, "cfg.yaml:1: worker_cpu out of range (0..1023)"));
     free(err);
 }
 
@@ -206,7 +206,7 @@ static void test_WorkerCpuOutOfRangeRejected(void)
  * silently ignored (agreed decision) */
 static void test_WorkerCpuIgnoredInSyncMode(void)
 {
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "async: false\n"
         "worker_cpu: 2\n");
     TEST_ASSERT_EQUAL_INT(0, amc_logger_init("cfg.yaml"));
@@ -216,7 +216,7 @@ static void test_WorkerCpuIgnoredInSyncMode(void)
 /* comments and quoting styles that ARE inside the subset */
 static void test_CommentsAndQuotesAccepted(void)
 {
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "# leading comment\n"
         "default_level: 'WARN'      # single-quoted\n"
         "async: false               # plain scalar\n"
