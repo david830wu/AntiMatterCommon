@@ -46,33 +46,35 @@ static struct timespec abs_from_ms(uint64_t ms)
 
 /* ---- producer side ---- */
 
-void amc_internal_async_enqueue(const struct amc_msg *m, const char *payload)
+void amc_logger_internal_async_enqueue(const struct amc_logger_internal_msg *m,
+                                       const char *payload)
 {
-    struct amc_queue *q = &g_amc.queue;
+    struct amc_logger_internal_queue *q = &amc_logger_internal_global.queue;
 
     pthread_mutex_lock(&q->mtx);
     for (;;) {
         if (q->stop) {                    /* shutdown: never accepted */
-            AMC_STAT_INC(st_dropped_new);
+            AMC_LOGGER_INTERNAL_STAT_INC(st_dropped_new);
             pthread_mutex_unlock(&q->mtx);
             return;
         }
         if (q->count + q->inflight < q->capacity)
             break;                        /* room available */
-        if (g_amc.cfg.policy == AMC_POLICY_DISCARD_NEW) {
-            AMC_STAT_INC(st_dropped_new);
+        enum amc_logger_internal_policy policy = amc_logger_internal_global.cfg.policy;
+        if (policy == AMC_LOGGER_INTERNAL_POLICY_DISCARD_NEW) {
+            AMC_LOGGER_INTERNAL_STAT_INC(st_dropped_new);
             pthread_mutex_unlock(&q->mtx);
             return;
         }
-        if (g_amc.cfg.policy == AMC_POLICY_OVERRUN_OLDEST && q->count > 0) {
+        if (policy == AMC_LOGGER_INTERNAL_POLICY_OVERRUN_OLDEST && q->count > 0) {
             q->head = (q->head + 1) % q->capacity;
             q->count--;
-            AMC_STAT_INC(st_overwritten);
+            AMC_LOGGER_INTERNAL_STAT_INC(st_overwritten);
             break;
         }
         /* `block`, or overrun_oldest with every stored slot in flight:
          * wait for the worker to release space */
-        AMC_STAT_INC(st_blocks);
+        AMC_LOGGER_INTERNAL_STAT_INC(st_blocks);
         pthread_cond_wait(&q->not_full, &q->mtx);
     }
 
@@ -84,11 +86,11 @@ void amc_internal_async_enqueue(const struct amc_msg *m, const char *payload)
     q->count++;
     q->seq_enq++;
     atomic_store_explicit(&q->enq_hint, q->seq_enq, memory_order_relaxed);
-    AMC_STAT_INC(st_enqueued);
+    AMC_LOGGER_INTERNAL_STAT_INC(st_enqueued);
+    _Atomic uint64_t *high_water = &amc_logger_internal_global.st_high_water;
     if ((uint64_t)(q->count + q->inflight) >
-        atomic_load_explicit(&g_amc.st_high_water, memory_order_relaxed))
-        atomic_store_explicit(&g_amc.st_high_water, q->count + q->inflight,
-                              memory_order_relaxed);
+        atomic_load_explicit(high_water, memory_order_relaxed))
+        atomic_store_explicit(high_water, q->count + q->inflight, memory_order_relaxed);
     /* Wake the worker only if it is actually parked (skips the futex-wake
      * syscall entirely while the worker is busy draining), and signal after
      * unlocking so the woken worker never bounces off a still-held mutex.
@@ -102,9 +104,9 @@ void amc_internal_async_enqueue(const struct amc_msg *m, const char *payload)
 
 /* ---- flush watermark (Architecture §6.5) ---- */
 
-int amc_internal_async_flush(void)
+int amc_logger_internal_async_flush(void)
 {
-    struct amc_queue *q = &g_amc.queue;
+    struct amc_logger_internal_queue *q = &amc_logger_internal_global.queue;
 
     pthread_mutex_lock(&q->mtx);
     uint64_t target = q->seq_enq;
@@ -122,7 +124,7 @@ int amc_internal_async_flush(void)
 static void *worker_main(void *arg)
 {
     (void)arg;
-    struct amc_queue *q = &g_amc.queue;
+    struct amc_logger_internal_queue *q = &amc_logger_internal_global.queue;
     const uint32_t stride = q->slot_stride;
     uint64_t last_flush = wall_ms();
 
@@ -152,31 +154,33 @@ static void *worker_main(void *arg)
                  * would put the producer and worker into per-message mutex
                  * collisions. The extra microseconds of gathering are
                  * invisible next to fwrite latency. */
-                for (int s = 0; s < AMC_WORKER_SPIN_ITERS; s++) {
+                for (int s = 0; s < AMC_LOGGER_INTERNAL_WORKER_SPIN_ITERS; s++) {
                     if (atomic_load_explicit(&q->enq_hint,
                                              memory_order_relaxed) - seen >= 8)
                         break;
-                    AMC_CPU_RELAX();
+                    AMC_LOGGER_INTERNAL_CPU_RELAX();
                 }
                 pthread_mutex_lock(&q->mtx);
                 continue;                        /* recheck under the lock */
             }
             q->worker_waiting = 1;
-            if (g_amc.cfg.flush_every_ms == 0) {
+            if (amc_logger_internal_global.cfg.flush_every_ms == 0) {
                 pthread_cond_wait(&q->not_empty, &q->mtx);
                 q->worker_waiting = 0;
             } else {
-                struct timespec dl =
-                    abs_from_ms(last_flush + g_amc.cfg.flush_every_ms);
+                struct timespec dl = abs_from_ms(
+                    last_flush + amc_logger_internal_global.cfg.flush_every_ms);
                 int rc = pthread_cond_timedwait(&q->not_empty, &q->mtx, &dl);
                 q->worker_waiting = 0;
                 if (rc == ETIMEDOUT)
                     break;                       /* periodic flush tick */
             }
         }
-        uint32_t take  = q->count < AMC_WORKER_BATCH ? q->count : AMC_WORKER_BATCH;
+        uint32_t take  = q->count < AMC_LOGGER_INTERNAL_WORKER_BATCH
+                             ? q->count : AMC_LOGGER_INTERNAL_WORKER_BATCH;
         uint32_t start = q->head;
-        int zero_copy  = g_amc.cfg.policy != AMC_POLICY_OVERRUN_OLDEST;
+        int zero_copy  = amc_logger_internal_global.cfg.policy
+                             != AMC_LOGGER_INTERNAL_POLICY_OVERRUN_OLDEST;
         if (zero_copy) {
             /* O(1) checkout: take indices only; slots are read outside the
              * lock, protected by the in-flight accounting */
@@ -187,9 +191,10 @@ static void *worker_main(void *arg)
             for (uint32_t i = 0; i < take; i++) {
                 const char *slot = q->slots +
                     (size_t)((start + i) % q->capacity) * stride;
-                const struct amc_msg *sm = (const struct amc_msg *)slot;
+                const struct amc_logger_internal_msg *sm =
+                    (const struct amc_logger_internal_msg *)slot;
                 memcpy(q->batch + (size_t)i * stride, slot,
-                       sizeof(struct amc_msg) + sm->payload_len);
+                       sizeof(struct amc_logger_internal_msg) + sm->payload_len);
             }
         }
         q->head = (q->head + take) % q->capacity;
@@ -202,11 +207,13 @@ static void *worker_main(void *arg)
         pthread_mutex_unlock(&q->mtx);
 
         for (uint32_t i = 0; i < take; i++) {
-            const struct amc_msg *m = zero_copy
-                ? (const struct amc_msg *)
+            const struct amc_logger_internal_msg *m = zero_copy
+                ? (const struct amc_logger_internal_msg *)
                       (q->slots + (size_t)((start + i) % q->capacity) * stride)
-                : (const struct amc_msg *)(q->batch + (size_t)i * stride);
-            amc_internal_emit(m, (const char *)m + sizeof(struct amc_msg));
+                : (const struct amc_logger_internal_msg *)
+                      (q->batch + (size_t)i * stride);
+            amc_logger_internal_emit(
+                m, (const char *)m + sizeof(struct amc_logger_internal_msg));
         }
         /* zero-copy batches are released at the top of the next iteration —
          * one queue-lock acquisition per batch instead of two, which halves
@@ -214,11 +221,11 @@ static void *worker_main(void *arg)
         prev_take = zero_copy ? take : 0;
 
         uint64_t now = wall_ms();
-        int tick = g_amc.cfg.flush_every_ms != 0 &&
-                   now - last_flush >= g_amc.cfg.flush_every_ms;
+        int tick = amc_logger_internal_global.cfg.flush_every_ms != 0 &&
+                   now - last_flush >= amc_logger_internal_global.cfg.flush_every_ms;
         if (want_flush || tick || stopping) {
-            amc_internal_maybe_emit_loss_summary();
-            amc_internal_sinks_flush();
+            amc_logger_internal_maybe_emit_loss_summary();
+            amc_logger_internal_sinks_flush();
             last_flush = now;
 
             pthread_mutex_lock(&q->mtx);
@@ -235,19 +242,21 @@ static void *worker_main(void *arg)
 
 /* ---- start / stop / (test) destroy ---- */
 
-int amc_internal_async_start(char *err, size_t errsz)
+int amc_logger_internal_async_start(char *err, size_t errsz)
 {
-    struct amc_queue *q = &g_amc.queue;
+    struct amc_logger_internal_queue *q = &amc_logger_internal_global.queue;
 
-    q->capacity    = g_amc.cfg.queue_size;
-    q->slot_stride = (uint32_t)AMC_ALIGN64(sizeof(struct amc_msg) +
-                                           g_amc.cfg.max_message_size);
+    const struct amc_logger_internal_config *cfg = &amc_logger_internal_global.cfg;
+    int overrun = cfg->policy == AMC_LOGGER_INTERNAL_POLICY_OVERRUN_OLDEST;
+
+    q->capacity    = cfg->queue_size;
+    q->slot_stride = (uint32_t)AMC_LOGGER_INTERNAL_ALIGN64(
+                         sizeof(struct amc_logger_internal_msg) + cfg->max_message_size);
     q->slots = malloc((size_t)q->capacity * q->slot_stride);
-    q->batch = (g_amc.cfg.policy == AMC_POLICY_OVERRUN_OLDEST)
-                   ? malloc((size_t)AMC_WORKER_BATCH * q->slot_stride)
+    q->batch = overrun
+                   ? malloc((size_t)AMC_LOGGER_INTERNAL_WORKER_BATCH * q->slot_stride)
                    : NULL;
-    if (!q->slots ||
-        (g_amc.cfg.policy == AMC_POLICY_OVERRUN_OLDEST && !q->batch)) {
+    if (!q->slots || (overrun && !q->batch)) {
         free(q->slots);
         free(q->batch);
         q->slots = q->batch = NULL;
@@ -260,7 +269,7 @@ int amc_internal_async_start(char *err, size_t errsz)
      * every ~13 slots). Init pays ~ms once so the hot path never does. */
     memset(q->slots, 0, (size_t)q->capacity * q->slot_stride);
     if (q->batch)
-        memset(q->batch, 0, (size_t)AMC_WORKER_BATCH * q->slot_stride);
+        memset(q->batch, 0, (size_t)AMC_LOGGER_INTERNAL_WORKER_BATCH * q->slot_stride);
     /* Plain mutex, deliberately: PTHREAD_MUTEX_ADAPTIVE_NP was measured and
      * rejected — producer-side spinning starves the worker at saturation
      * (drain rate halves) without improving the tail. See Architecture §14. */
@@ -283,14 +292,14 @@ int amc_internal_async_start(char *err, size_t errsz)
     pthread_attr_t attr;
     pthread_attr_init(&attr);
 #if defined(__linux__)
-    if (g_amc.cfg.worker_cpu >= 0) {
+    if (amc_logger_internal_global.cfg.worker_cpu >= 0) {
         cpu_set_t set;
         CPU_ZERO(&set);
-        CPU_SET(g_amc.cfg.worker_cpu, &set);
+        CPU_SET(amc_logger_internal_global.cfg.worker_cpu, &set);
         rc = pthread_attr_setaffinity_np(&attr, sizeof(set), &set);
     }
 #else
-    if (g_amc.cfg.worker_cpu >= 0)
+    if (amc_logger_internal_global.cfg.worker_cpu >= 0)
         fprintf(stderr, "amc_logger: worker_cpu is not supported on this "
                         "platform; worker runs unpinned\n");
 #endif
@@ -299,14 +308,14 @@ int amc_internal_async_start(char *err, size_t errsz)
         sigset_t all, old;
         sigfillset(&all);
         pthread_sigmask(SIG_SETMASK, &all, &old);
-        rc = pthread_create(&g_amc.worker, &attr, worker_main, NULL);
+        rc = pthread_create(&amc_logger_internal_global.worker, &attr, worker_main, NULL);
         pthread_sigmask(SIG_SETMASK, &old, NULL);
     }
     pthread_attr_destroy(&attr);
     if (rc != 0) {
-        if (g_amc.cfg.worker_cpu >= 0)
+        if (amc_logger_internal_global.cfg.worker_cpu >= 0)
             snprintf(err, errsz, "cannot create worker thread pinned to cpu %d: %s",
-                     g_amc.cfg.worker_cpu, strerror(rc));
+                     amc_logger_internal_global.cfg.worker_cpu, strerror(rc));
         else
             snprintf(err, errsz, "cannot create worker thread: %s", strerror(rc));
         pthread_mutex_destroy(&q->mtx);
@@ -319,16 +328,16 @@ int amc_internal_async_start(char *err, size_t errsz)
         return -1;
     }
 #if defined(__linux__)
-    pthread_setname_np(g_amc.worker, "amc-worker");
+    pthread_setname_np(amc_logger_internal_global.worker, "amc-logger");
 #endif
-    g_amc.worker_started = 1;
+    amc_logger_internal_global.worker_started = 1;
     return 0;
 }
 
-void amc_internal_async_stop(void)
+void amc_logger_internal_async_stop(void)
 {
-    struct amc_queue *q = &g_amc.queue;
-    if (!g_amc.worker_started)
+    struct amc_logger_internal_queue *q = &amc_logger_internal_global.queue;
+    if (!amc_logger_internal_global.worker_started)
         return;
     pthread_mutex_lock(&q->mtx);
     q->stop = 1;
@@ -336,8 +345,8 @@ void amc_internal_async_stop(void)
     pthread_cond_broadcast(&q->not_full);
     pthread_cond_broadcast(&q->flush_done);
     pthread_mutex_unlock(&q->mtx);
-    pthread_join(g_amc.worker, NULL);
-    g_amc.worker_started = 0;
+    pthread_join(amc_logger_internal_global.worker, NULL);
+    amc_logger_internal_global.worker_started = 0;
 
     /* Waiters that arrive after the join: watermark is final. */
     pthread_mutex_lock(&q->mtx);
@@ -347,9 +356,9 @@ void amc_internal_async_stop(void)
 }
 
 #ifdef AMC_LOGGER_TESTING
-void amc_internal_async_destroy(void)
+void amc_logger_internal_async_destroy(void)
 {
-    struct amc_queue *q = &g_amc.queue;
+    struct amc_logger_internal_queue *q = &amc_logger_internal_global.queue;
     if (!q->inited)
         return;
     pthread_mutex_destroy(&q->mtx);

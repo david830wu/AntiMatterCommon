@@ -261,7 +261,7 @@ static int parse_int_range(const char *s, long min, long max, long *out)
 
 /* ---- public entry points ---- */
 
-void amc_internal_config_defaults(struct amc_config *out)
+void amc_logger_internal_config_defaults(struct amc_logger_internal_config *out)
 {
     memset(out, 0, sizeof(*out));
     out->default_level    = AMC_LOGGER_LEVEL_INFO;
@@ -269,7 +269,7 @@ void amc_internal_config_defaults(struct amc_config *out)
     out->critical_sync    = 0;
     out->worker_cpu       = -1;   /* unpinned */
     out->utc_offset_hours = 8;
-    out->policy           = AMC_POLICY_BLOCK;
+    out->policy           = AMC_LOGGER_INTERNAL_POLICY_BLOCK;
     out->queue_size       = 8192;
     out->max_message_size = 2048;
     out->flush_every_ms   = 1000;
@@ -277,13 +277,13 @@ void amc_internal_config_defaults(struct amc_config *out)
     out->has_file         = 0;
 }
 
-void amc_internal_config_free(struct amc_config *cfg)
+void amc_logger_internal_config_free(struct amc_logger_internal_config *cfg)
 {
     free(cfg->file_path_template);
     cfg->file_path_template = NULL;
-    struct amc_cfg_logger *cl = cfg->loggers;
+    struct amc_logger_internal_cfg_logger *cl = cfg->loggers;
     while (cl) {
-        struct amc_cfg_logger *next = cl->next;
+        struct amc_logger_internal_cfg_logger *next = cl->next;
         free(cl->module);
         free(cl);
         cl = next;
@@ -304,11 +304,13 @@ static const char *const ROOT_KEYS[RK_COUNT] = {
     "worker_cpu", "sinks", "loggers"
 };
 
-int amc_internal_config_parse(const char *text, size_t len, const char *diag_name,
-                              struct amc_config *out, char *err, size_t errsz)
+int amc_logger_internal_config_parse(const char *text, size_t len,
+                                     const char *diag_name,
+                                     struct amc_logger_internal_config *out,
+                                     char *err, size_t errsz)
 {
     struct perr e = { err, errsz, diag_name };
-    amc_internal_config_defaults(out);
+    amc_logger_internal_config_defaults(out);
 
     char *copy = malloc(len + 1);
     if (!copy)
@@ -400,11 +402,12 @@ int amc_internal_config_parse(const char *text, size_t len, const char *diag_nam
                         fail(&e, c->line_no, "logger '%s' needs a level", c->key);
                         goto err;
                     }
-                    if (strlen(c->key) > AMC_MODULE_MAX - 1) {
+                    if (strlen(c->key) > AMC_LOGGER_INTERNAL_MODULE_MAX - 1) {
                         fail(&e, c->line_no, "module name too long");
                         goto err;
                     }
-                    for (struct amc_cfg_logger *cl = out->loggers; cl; cl = cl->next)
+                    for (struct amc_logger_internal_cfg_logger *cl = out->loggers; cl;
+                         cl = cl->next)
                         if (strcmp(cl->module, c->key) == 0) {
                             fail(&e, c->line_no, "duplicate logger '%s'", c->key);
                             goto err;
@@ -414,7 +417,7 @@ int amc_internal_config_parse(const char *text, size_t len, const char *diag_nam
                         fail(&e, c->line_no, "unknown level '%s'", c->val);
                         goto err;
                     }
-                    struct amc_cfg_logger *cl = calloc(1, sizeof(*cl));
+                    struct amc_logger_internal_cfg_logger *cl = calloc(1, sizeof(*cl));
                     if (!cl) {
                         fail(&e, c->line_no, "out of memory");
                         goto err;
@@ -456,42 +459,45 @@ int amc_internal_config_parse(const char *text, size_t len, const char *diag_nam
             break;
         case RK_POLICY:
             if (strcasecmp(p->val, "block") == 0)
-                out->policy = AMC_POLICY_BLOCK;
+                out->policy = AMC_LOGGER_INTERNAL_POLICY_BLOCK;
             else if (strcasecmp(p->val, "overrun_oldest") == 0)
-                out->policy = AMC_POLICY_OVERRUN_OLDEST;
+                out->policy = AMC_LOGGER_INTERNAL_POLICY_OVERRUN_OLDEST;
             else if (strcasecmp(p->val, "discard_new") == 0)
-                out->policy = AMC_POLICY_DISCARD_NEW;
+                out->policy = AMC_LOGGER_INTERNAL_POLICY_DISCARD_NEW;
             else {
                 fail(&e, p->line_no, "unknown queue_full_policy '%s'", p->val);
                 goto err;
             }
             break;
         case RK_QUEUE_SIZE:
-            switch (parse_int_range(p->val, AMC_QUEUE_SIZE_MIN, AMC_QUEUE_SIZE_MAX, &v)) {
+            switch (parse_int_range(p->val, AMC_LOGGER_INTERNAL_QUEUE_SIZE_MIN,
+                                    AMC_LOGGER_INTERNAL_QUEUE_SIZE_MAX, &v)) {
             case 0: out->queue_size = (uint32_t)v; break;
             case -2:
                 fail(&e, p->line_no, "queue_size out of range (%d..%d)",
-                     AMC_QUEUE_SIZE_MIN, AMC_QUEUE_SIZE_MAX);
+                     AMC_LOGGER_INTERNAL_QUEUE_SIZE_MIN,
+                     AMC_LOGGER_INTERNAL_QUEUE_SIZE_MAX);
                 goto err;
             default: goto err_int;
             }
             break;
         case RK_MAX_MSG:
-            switch (parse_int_range(p->val, AMC_MSG_SIZE_MIN, AMC_MSG_SIZE_MAX, &v)) {
+            switch (parse_int_range(p->val, AMC_LOGGER_INTERNAL_MSG_SIZE_MIN,
+                                    AMC_LOGGER_INTERNAL_MSG_SIZE_MAX, &v)) {
             case 0: out->max_message_size = (uint32_t)v; break;
             case -2:
                 fail(&e, p->line_no, "max_message_size out of range (%d..%d)",
-                     AMC_MSG_SIZE_MIN, AMC_MSG_SIZE_MAX);
+                     AMC_LOGGER_INTERNAL_MSG_SIZE_MIN, AMC_LOGGER_INTERNAL_MSG_SIZE_MAX);
                 goto err;
             default: goto err_int;
             }
             break;
         case RK_FLUSH_MS:
-            switch (parse_int_range(p->val, 0, AMC_FLUSH_MS_MAX, &v)) {
+            switch (parse_int_range(p->val, 0, AMC_LOGGER_INTERNAL_FLUSH_MS_MAX, &v)) {
             case 0: out->flush_every_ms = (uint32_t)v; break;
             case -2:
                 fail(&e, p->line_no, "flush_every_ms out of range (0..%d)",
-                     AMC_FLUSH_MS_MAX);
+                     AMC_LOGGER_INTERNAL_FLUSH_MS_MAX);
                 goto err;
             default: goto err_int;
             }
@@ -506,11 +512,11 @@ int amc_internal_config_parse(const char *text, size_t len, const char *diag_nam
             }
             break;
         case RK_WORKER_CPU:
-            switch (parse_int_range(p->val, 0, AMC_WORKER_CPU_MAX, &v)) {
+            switch (parse_int_range(p->val, 0, AMC_LOGGER_INTERNAL_WORKER_CPU_MAX, &v)) {
             case 0: out->worker_cpu = (int)v; break;
             case -2:
                 fail(&e, p->line_no, "worker_cpu out of range (0..%d)",
-                     AMC_WORKER_CPU_MAX);
+                     AMC_LOGGER_INTERNAL_WORKER_CPU_MAX);
                 goto err;
             default: goto err_int;
             }
@@ -534,7 +540,7 @@ err_int:
 err:
     free(pl);
     free(copy);
-    amc_internal_config_free(out);
+    amc_logger_internal_config_free(out);
     memset(out, 0, sizeof(*out));
     return -1;
 }

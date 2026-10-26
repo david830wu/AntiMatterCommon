@@ -68,7 +68,7 @@ static void put_digits(char *dst, int v, int width)
 
 static void render_ts(struct ap *a, const struct timespec *ts)
 {
-    int off = g_amc.cfg.utc_offset_hours;
+    int off = amc_logger_internal_global.cfg.utc_offset_hours;
     if (!tls_ts.valid || tls_ts.sec != ts->tv_sec || tls_ts.off != off) {
         time_t shifted = ts->tv_sec + (time_t)off * 3600;
         struct tm tm;
@@ -101,24 +101,25 @@ static void render_ts(struct ap *a, const struct timespec *ts)
     ap_mem(a, usec, 6);
 }
 
-/* ---- runtime JSON string escaping (AMC_KV_STR_ESC, v1.1) -----------------
- * Escapes into a per-thread ring of AMC_JSON_ESC_SLOTS static buffers, so up
- * to 16 escaped values can coexist inside one log call (the composer's pair
- * cap) with no heap allocation and nothing to leak when a thread exits. The
- * returned pointer is only meant to live as a payload argument of the log
- * call it appears in. Escaped: '"', '\', and all control bytes (short forms
+/* ---- runtime JSON string escaping (AMC_LOGGER_KV_STR_ESC, v1.1) -----------------
+ * Escapes into a per-thread ring of AMC_LOGGER_INTERNAL_JSON_ESC_SLOTS static
+ * buffers, so up to 16 escaped values can coexist inside one log call (the
+ * composer's pair cap) with no heap allocation and nothing to leak when a
+ * thread exits. The returned pointer is only meant to live as a payload
+ * argument of the log call it appears in. Escaped: '"', '\', and all control bytes (short forms
  * \b \f \n \r \t, otherwise \u00XX) — an embedded newline therefore can no
  * longer break the one-line log format. UTF-8 passes through unchanged.
  * NULL renders as the empty string. Output longer than the slot ends with
  * "..." and increments the truncated statistic. */
 const char *amc_logger_json_escape(const char *s)
 {
-    static _Thread_local char     ring[AMC_JSON_ESC_SLOTS][AMC_JSON_ESC_BUF];
+    static _Thread_local char
+        ring[AMC_LOGGER_INTERNAL_JSON_ESC_SLOTS][AMC_LOGGER_INTERNAL_JSON_ESC_BUF];
     static _Thread_local unsigned next;
     static const char hex[] = "0123456789abcdef";
 
     char *out = ring[next];
-    next = (next + 1u) % AMC_JSON_ESC_SLOTS;
+    next = (next + 1u) % AMC_LOGGER_INTERNAL_JSON_ESC_SLOTS;
 
     if (s == NULL) {
         out[0] = '\0';
@@ -143,7 +144,8 @@ const char *amc_logger_json_escape(const char *s)
                 need = 6;
             break;
         }
-        if (pos + need > AMC_JSON_ESC_BUF - 4) {  /* keep room for "..." + NUL */
+        /* keep room for "..." + NUL */
+        if (pos + need > AMC_LOGGER_INTERNAL_JSON_ESC_BUF - 4) {
             cut = 1;
             break;
         }
@@ -164,16 +166,17 @@ const char *amc_logger_json_escape(const char *s)
     if (cut) {
         memcpy(out + pos, "...", 3);
         pos += 3;
-        AMC_STAT_INC(st_truncated);
+        AMC_LOGGER_INTERNAL_STAT_INC(st_truncated);
     }
     out[pos] = '\0';
     return out;
 }
 
-size_t amc_internal_render_line(char *dst, size_t cap, const struct amc_msg *m,
-                                const char *payload, int *out_truncated)
+size_t amc_logger_internal_render_line(char *dst, size_t cap,
+                                       const struct amc_logger_internal_msg *m,
+                                       const char *payload, int *out_truncated)
 {
-    const size_t marker_len = sizeof(AMC_TRUNC_MARKER) - 1;
+    const size_t marker_len = sizeof(AMC_LOGGER_INTERNAL_TRUNC_MARKER) - 1;
     struct ap a = { dst, cap - 1, 0, 0 };   /* keep one byte for '\n' */
 
     ap_ch(&a, '[');
@@ -199,7 +202,7 @@ size_t amc_internal_render_line(char *dst, size_t cap, const struct amc_msg *m,
         /* rewind if needed so the marker + '\n' always fit inside cap */
         if (a.len > cap - marker_len - 1)
             a.len = cap - marker_len - 1;
-        memcpy(dst + a.len, AMC_TRUNC_MARKER, marker_len);
+        memcpy(dst + a.len, AMC_LOGGER_INTERNAL_TRUNC_MARKER, marker_len);
         a.len += marker_len;
     }
     dst[a.len++] = '\n';

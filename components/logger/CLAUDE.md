@@ -66,18 +66,18 @@ Data flow (async, the default):
 ```
 AMC_LOGGER_*() macro                    AmcLoggerCore.c
   → call-site static cached logger (acquire/release atomic)
-  → relaxed level check (struct amc_logger.level is public for exactly this)
-  → amc_logger_log(): capture timestamp + vsnprintf payload on the stack
+  → relaxed level check (struct amc_logger_internal_handle.level is public for exactly this)
+  → amc_logger_internal_log(): capture timestamp + vsnprintf payload on the stack
   → AmcLoggerQueue.c: copy into MPSC ring slot under queue mutex
   → single worker thread: batched dequeue, then per-line
-  → AmcLoggerSink.c amc_internal_emit(): render (AmcLoggerRender.c) + fwrite
+  → AmcLoggerSink.c amc_logger_internal_emit(): render (AmcLoggerRender.c) + fwrite
 ```
 
-Sync mode and `critical_sync` CRITICALs skip the queue and call `amc_internal_emit()`
+Sync mode and `critical_sync` CRITICALs skip the queue and call `amc_logger_internal_emit()`
 directly from the calling thread — one shared emission path for all modes.
 
 Two library targets: `amc_logger` (production) and `amc_logger_testing`
-(`-DAMC_LOGGER_TESTING`: adds `amc_internal_test_reset()` and a clock hook). Tests must
+(`-DAMC_LOGGER_TESTING`: adds `amc_logger_internal_test_reset()` and a clock hook). Tests must
 link the testing variant; production has no reset and init/shutdown happen once per
 process, ever.
 
@@ -88,16 +88,16 @@ process, ever.
 - **Shutdown never frees** logger structs, the registry, or queue slot memory — that is
   what makes post-shutdown log calls safe without refcounting. Only OS resources
   (worker thread, `FILE*`) are released. Same reason registry loggers survive
-  `amc_internal_test_reset()`: call-site static caches point at them, so
+  `amc_logger_internal_test_reset()`: call-site static caches point at them, so
   `amc_logger_init` re-sweeps all existing loggers' levels before applying overrides.
 - **The `"\1" __VA_ARGS__` sentinel** in the macros: enforces literal format strings,
   makes empty payloads work, and avoids `-Wformat-zero-length` in user builds.
-  `amc_logger_log` skips the first byte. EVENT strings are stored by pointer — the
+  `amc_logger_internal_log` skips the first byte. EVENT strings are stored by pointer — the
   literal-only contract is documented API.
-- **`AMC_JSON` must stay a pure compile-time literal composer** (Architecture §14.14):
+- **`AMC_LOGGER_JSON` must stay a pure compile-time literal composer** (Architecture §14.14):
   it expands to exactly the raw form's format literal + args — Test10 asserts byte
   equality. Never turn it into anything with runtime cost. The single deliberate
-  runtime piece is `AMC_KV_STR_ESC` → `amc_logger_json_escape()` (per-thread static
+  runtime piece is `AMC_LOGGER_KV_STR_ESC` → `amc_logger_json_escape()` (per-thread static
   TLS ring, 16 × 1 KB — §14.15); keep its slot count ≥ the composer's pair cap.
 - **Fail fast** (philosophy 00): config mistakes are init failures with a
   `file:line: message` stderr diagnostic — never a silent default. Every new
@@ -115,7 +115,7 @@ meant to be read in order — narrative header comment per file, one behavior pe
 New user-visible behavior belongs in the fitting chapter, written in the same style.
 Test discipline: always release captured stdout/stderr (`release_stdout()`) *before*
 asserting, or Unity's failure output lands in the capture file. `TestSupport.h`'s
-`amc_assert_log_line()` is the executable line-format spec. Test08 is compiled with
+`assert_log_line()` is the executable line-format spec. Test08 is compiled with
 `-DAMC_LOGGER_ACTIVE_LEVEL=AMC_LOGGER_LEVEL_WARN` to prove compile-time stripping.
 
 ## Conventions
@@ -124,7 +124,7 @@ asserting, or Unity's failure output lands in the capture file. `TestSupport.h`'
   the public header is C-only (`#error` under `__cplusplus`). Linux gcc-13 and macOS
   AppleClang are the supported toolchains; POSIX APIs only.
 - Naming: public `amc_`/`AMC_LOGGER_` (AMC = AntiMatterCommon, the parent repo this
-  integrates into), internals `amc_internal_`, PascalCase filenames, snake_case
+  integrates into), internals `amc_logger_internal_`, PascalCase filenames, snake_case
   functions.
 - Zero runtime dependencies beyond libc/pthreads. Unity is vendored in
   `third_party/unity` (test-only); a future spdlog benchmark dependency is allowed for

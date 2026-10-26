@@ -30,8 +30,8 @@
 #include <dirent.h>
 #endif
 
-void setUp(void)   { amc_internal_test_reset(); }
-void tearDown(void){ amc_internal_test_reset(); amc_release_all_streams(); }
+void setUp(void)   { amc_logger_internal_test_reset(); }
+void tearDown(void){ amc_logger_internal_test_reset(); release_all_streams(); }
 
 #if defined(__linux__)
 /* procfs files report size 0, so read with fread, not seek/tell */
@@ -46,7 +46,7 @@ static int read_proc_file(const char *path, char *buf, size_t sz)
     return 0;
 }
 
-/* find the task named "amc-worker" and copy its Cpus_allowed_list */
+/* find the task named "amc-logger" and copy its Cpus_allowed_list */
 static int worker_allowed_cpus(char *out, size_t outsz)
 {
     DIR *d = opendir("/proc/self/task");
@@ -62,7 +62,7 @@ static int worker_allowed_cpus(char *out, size_t outsz)
         if (read_proc_file(path, buf, sizeof(buf)) != 0)
             continue;
         buf[strcspn(buf, "\n")] = '\0';
-        if (strcmp(buf, "amc-worker") != 0)
+        if (strcmp(buf, "amc-logger") != 0)
             continue;
         snprintf(path, sizeof(path), "/proc/self/task/%s/status", e->d_name);
         if (read_proc_file(path, buf, sizeof(buf)) != 0)
@@ -90,7 +90,7 @@ static int worker_allowed_cpus(char *out, size_t outsz)
 static void test_FlushMakesLinesVisibleMidRun(void)
 {
     unlink("flush.log");
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "flush_every_ms: 60000\n"          /* periodic flush too slow to help */
         "sinks:\n"
         "  basic_file: \"./flush.log\"\n");
@@ -99,9 +99,9 @@ static void test_FlushMakesLinesVisibleMidRun(void)
     AMC_LOGGER_INFO("VisibleAfterFlush", "{\"n\":%d}", 1);
     TEST_ASSERT_EQUAL_INT(0, amc_logger_flush());
 
-    char *file = amc_read_file("flush.log");     /* mid-run, before shutdown */
+    char *file = read_file("flush.log");     /* mid-run, before shutdown */
     TEST_ASSERT_NOT_NULL(file);
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(file, "VisibleAfterFlush"));
+    TEST_ASSERT_EQUAL_INT(1, count_lines_containing(file, "VisibleAfterFlush"));
     free(file);
     amc_logger_shutdown();
 }
@@ -110,7 +110,7 @@ static void test_FlushMakesLinesVisibleMidRun(void)
 static void test_BlockPolicyIsLossless(void)
 {
     unlink("block.log");
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "queue_size: 16\n"
         "queue_full_policy: block\n"
         "sinks:\n"
@@ -120,8 +120,8 @@ static void test_BlockPolicyIsLossless(void)
         AMC_LOGGER_INFO("Burst", "{\"n\":%d}", i);
     amc_logger_shutdown();
 
-    char *file = amc_read_file("block.log");
-    TEST_ASSERT_EQUAL_INT(2000, amc_count_app_lines(file));
+    char *file = read_file("block.log");
+    TEST_ASSERT_EQUAL_INT(2000, count_app_lines(file));
     struct amc_logger_stats st;
     amc_logger_get_stats(&st);
     TEST_ASSERT_EQUAL_UINT64(2000, st.enqueued);
@@ -135,7 +135,7 @@ static void test_BlockPolicyIsLossless(void)
 static void test_DiscardNewIsHonestAboutDrops(void)
 {
     unlink("discard.log");
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "queue_size: 16\n"
         "queue_full_policy: discard_new\n"
         "sinks:\n"
@@ -146,16 +146,16 @@ static void test_DiscardNewIsHonestAboutDrops(void)
         AMC_LOGGER_INFO("Flood", "{\"n\":%d}", i);
     amc_logger_shutdown();
 
-    char *file = amc_read_file("discard.log");
+    char *file = read_file("discard.log");
     struct amc_logger_stats st;
     amc_logger_get_stats(&st);
 
     /* accepted + dropped == sent, and the file holds exactly the accepted */
     TEST_ASSERT_EQUAL_UINT64(TOTAL, st.enqueued + st.dropped_new);
-    TEST_ASSERT_EQUAL_INT((int)st.enqueued, amc_count_app_lines(file));
+    TEST_ASSERT_EQUAL_INT((int)st.enqueued, count_app_lines(file));
     if (st.dropped_new > 0)
         TEST_ASSERT_TRUE_MESSAGE(
-            amc_count_lines_containing(file, "[MessageLoss]") >= 1,
+            count_lines_containing(file, "[MessageLoss]") >= 1,
             "drops must be announced in a MessageLoss summary");
     free(file);
 }
@@ -165,7 +165,7 @@ static void test_DiscardNewIsHonestAboutDrops(void)
 static void test_OverrunOldestKeepsTheNewest(void)
 {
     unlink("overrun.log");
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "queue_size: 16\n"
         "queue_full_policy: overrun_oldest\n"
         "sinks:\n"
@@ -176,15 +176,15 @@ static void test_OverrunOldestKeepsTheNewest(void)
         AMC_LOGGER_INFO("Roll", "{\"n\":%d}", i);
     amc_logger_shutdown();
 
-    char *file = amc_read_file("overrun.log");
+    char *file = read_file("overrun.log");
     struct amc_logger_stats st;
     amc_logger_get_stats(&st);
 
     TEST_ASSERT_EQUAL_UINT64(TOTAL, st.enqueued);   /* all were accepted */
     TEST_ASSERT_EQUAL_INT((int)(TOTAL - st.overwritten_old),
-                          amc_count_app_lines(file));
+                          count_app_lines(file));
     TEST_ASSERT_EQUAL_INT(1,
-        amc_count_lines_containing(file, "{\"n\":2999}")); /* newest survives */
+        count_lines_containing(file, "{\"n\":2999}")); /* newest survives */
     free(file);
 }
 
@@ -192,7 +192,7 @@ static void test_OverrunOldestKeepsTheNewest(void)
 static void test_TruncationIsVisibleAndCounted(void)
 {
     unlink("trunc.log");
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "max_message_size: 256\n"
         "sinks:\n"
         "  basic_file: \"./trunc.log\"\n");
@@ -204,9 +204,9 @@ static void test_TruncationIsVisibleAndCounted(void)
     AMC_LOGGER_INFO("Oversized", "{\"data\":\"%s\"}", big);
     amc_logger_shutdown();
 
-    char *file = amc_read_file("trunc.log");
+    char *file = read_file("trunc.log");
     char line[512];
-    TEST_ASSERT_NOT_NULL(amc_get_line(file, 0, line, sizeof(line)));
+    TEST_ASSERT_NOT_NULL(get_line(file, 0, line, sizeof(line)));
     size_t n = strlen(line);
     TEST_ASSERT_TRUE_MESSAGE(n < 256, "line must respect max_message_size");
     TEST_ASSERT_EQUAL_STRING("...(truncated)", line + n - 14);
@@ -221,7 +221,7 @@ static void test_TruncationIsVisibleAndCounted(void)
 static void test_CriticalSyncWritesBeforeReturning(void)
 {
     unlink("critical.log");
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "critical_sync: true\n"
         "flush_every_ms: 60000\n"
         "sinks:\n"
@@ -233,9 +233,9 @@ static void test_CriticalSyncWritesBeforeReturning(void)
 
     /* no flush, no shutdown — the CRITICAL line is already there.
      * (It may legitimately appear BEFORE the still-queued INFO line.) */
-    char *file = amc_read_file("critical.log");
+    char *file = read_file("critical.log");
     TEST_ASSERT_NOT_NULL(file);
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(file, "LastWords"));
+    TEST_ASSERT_EQUAL_INT(1, count_lines_containing(file, "LastWords"));
     free(file);
     amc_logger_shutdown();
 }
@@ -244,20 +244,20 @@ static void test_CriticalSyncWritesBeforeReturning(void)
 static void test_SyncModeWritesInline(void)
 {
     unlink("sync.log");
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "async: false\n"
         "sinks:\n"
         "  basic_file: \"./sync.log\"\n");
     amc_logger_init("cfg.yaml");
 
     AMC_LOGGER_ERROR("Immediate1");           /* ERROR auto-flushes */
-    char *file = amc_read_file("sync.log");
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines(file));
+    char *file = read_file("sync.log");
+    TEST_ASSERT_EQUAL_INT(1, count_lines(file));
     free(file);
 
     AMC_LOGGER_ERROR("Immediate2");
-    file = amc_read_file("sync.log");
-    TEST_ASSERT_EQUAL_INT(2, amc_count_lines(file));
+    file = read_file("sync.log");
+    TEST_ASSERT_EQUAL_INT(2, count_lines(file));
     free(file);
     amc_logger_shutdown();
 }
@@ -273,7 +273,7 @@ static void test_WorkerCpuControlsTheWorkerThread(void)
 {
 #if defined(__linux__)
     unlink("pin.log");
-    amc_write_file("cfg.yaml",
+    write_file("cfg.yaml",
         "worker_cpu: 0\n"
         "sinks:\n"
         "  basic_file: \"./pin.log\"\n");
@@ -281,30 +281,30 @@ static void test_WorkerCpuControlsTheWorkerThread(void)
 
     char cpus[64];
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, worker_allowed_cpus(cpus, sizeof(cpus)),
-                                  "amc-worker task not found under /proc");
+                                  "amc-logger task not found under /proc");
     TEST_ASSERT_EQUAL_STRING("0", cpus);
 
     AMC_LOGGER_INFO("PinnedAndWorking");
     amc_logger_shutdown();
-    char *file = amc_read_file("pin.log");
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines(file));
+    char *file = read_file("pin.log");
+    TEST_ASSERT_EQUAL_INT(1, count_lines(file));
     free(file);
 
     /* an in-range core this machine does not have: init fails loudly */
     if (sysconf(_SC_NPROCESSORS_CONF) <= 1023) {
-        amc_internal_test_reset();
-        amc_write_file("cfg.yaml", "worker_cpu: 1023\n");
+        amc_logger_internal_test_reset();
+        write_file("cfg.yaml", "worker_cpu: 1023\n");
         capture_stderr();
         int rc = amc_logger_init("cfg.yaml");
         char *errtxt = release_stderr();
         TEST_ASSERT_EQUAL_INT(-1, rc);
-        TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(errtxt,
+        TEST_ASSERT_EQUAL_INT(1, count_lines_containing(errtxt,
             "cannot create worker thread pinned to cpu 1023"));
         free(errtxt);
     }
 #else
     /* macOS: warn once, run unpinned, logging still works */
-    amc_write_file("cfg.yaml", "worker_cpu: 0\n");
+    write_file("cfg.yaml", "worker_cpu: 0\n");
     capture_stdout();
     capture_stderr();
     int rc = amc_logger_init("cfg.yaml");
@@ -313,9 +313,9 @@ static void test_WorkerCpuControlsTheWorkerThread(void)
     char *errtxt = release_stderr();
     char *out = release_stdout();
     TEST_ASSERT_EQUAL_INT(0, rc);
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(errtxt,
+    TEST_ASSERT_EQUAL_INT(1, count_lines_containing(errtxt,
         "worker_cpu is not supported on this platform"));
-    TEST_ASSERT_EQUAL_INT(1, amc_count_lines_containing(out, "UnpinnedButAlive"));
+    TEST_ASSERT_EQUAL_INT(1, count_lines_containing(out, "UnpinnedButAlive"));
     free(errtxt);
     free(out);
 #endif

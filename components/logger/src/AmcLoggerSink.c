@@ -14,7 +14,7 @@
 static void report_write_error(void)
 {
     static _Atomic uint64_t n;
-    AMC_STAT_INC(st_write_errors);
+    AMC_LOGGER_INTERNAL_STAT_INC(st_write_errors);
     uint64_t seen = atomic_fetch_add_explicit(&n, 1, memory_order_relaxed);
     if (seen % 1000 == 0)
         fprintf(stderr, "amc_logger: sink write error: %s\n", strerror(errno));
@@ -22,7 +22,7 @@ static void report_write_error(void)
 
 /* ---- $TODAY / $PID expansion (once, at open — Design Q14) ---- */
 
-int amc_internal_path_expand(const char *tmpl, char *out, size_t outsz,
+int amc_logger_internal_path_expand(const char *tmpl, char *out, size_t outsz,
                              char *err, size_t errsz)
 {
     size_t o = 0;
@@ -38,8 +38,9 @@ int amc_internal_path_expand(const char *tmpl, char *out, size_t outsz,
                 vn++;
             if (vn == 5 && strncmp(v, "TODAY", 5) == 0) {
                 struct timespec ts;
-                amc_internal_now(&ts);
-                time_t shifted = ts.tv_sec + (time_t)g_amc.cfg.utc_offset_hours * 3600;
+                amc_logger_internal_now(&ts);
+                int off = amc_logger_internal_global.cfg.utc_offset_hours;
+                time_t shifted = ts.tv_sec + (time_t)off * 3600;
                 struct tm tm;
                 gmtime_r(&shifted, &tm);
                 insn = (size_t)snprintf(sub, sizeof(sub), "%04d%02d%02d",
@@ -72,7 +73,7 @@ int amc_internal_path_expand(const char *tmpl, char *out, size_t outsz,
 
 static int mkdir_parents(const char *filepath, char *err, size_t errsz)
 {
-    char tmp[AMC_PATH_MAX];
+    char tmp[AMC_LOGGER_INTERNAL_PATH_MAX];
     size_t n = strlen(filepath);
     if (n >= sizeof(tmp)) {
         snprintf(err, errsz, "sink path is too long");
@@ -95,7 +96,7 @@ static int mkdir_parents(const char *filepath, char *err, size_t errsz)
 
 /* ---- setup / teardown ---- */
 
-static void sink_teardown_one(struct amc_sink *s)
+static void sink_teardown_one(struct amc_logger_internal_sink *s)
 {
     if (s->mtx_inited)
         pthread_mutex_destroy(&s->mtx);
@@ -105,21 +106,22 @@ static void sink_teardown_one(struct amc_sink *s)
     memset(s, 0, sizeof(*s));
 }
 
-int amc_internal_sinks_setup(char *err, size_t errsz)
+int amc_logger_internal_sinks_setup(char *err, size_t errsz)
 {
-    struct amc_sink *so = &g_amc.sinks[0];
-    struct amc_sink *sf = &g_amc.sinks[1];
+    struct amc_logger_internal_sink *so = &amc_logger_internal_global.sinks[0];
+    struct amc_logger_internal_sink *sf = &amc_logger_internal_global.sinks[1];
 
-    if (g_amc.cfg.has_stdout) {
+    if (amc_logger_internal_global.cfg.has_stdout) {
         pthread_mutex_init(&so->mtx, NULL);
         so->mtx_inited = 1;
         so->fp = stdout;             /* app-owned stream: no setvbuf, never fclosed */
         so->is_file = 0;
     }
-    if (g_amc.cfg.has_file) {
-        char path[AMC_PATH_MAX];
-        if (amc_internal_path_expand(g_amc.cfg.file_path_template, path,
-                                     sizeof(path), err, errsz) != 0 ||
+    if (amc_logger_internal_global.cfg.has_file) {
+        char path[AMC_LOGGER_INTERNAL_PATH_MAX];
+        if (amc_logger_internal_path_expand(
+                amc_logger_internal_global.cfg.file_path_template, path, sizeof(path),
+                err, errsz) != 0 ||
             mkdir_parents(path, err, errsz) != 0)
             goto fail;
         FILE *fp = fopen(path, "a");
@@ -132,9 +134,9 @@ int amc_internal_sinks_setup(char *err, size_t errsz)
         sf->mtx_inited = 1;
         sf->fp = fp;
         sf->is_file = 1;
-        sf->iobuf = malloc(AMC_FILE_IOBUF_SIZE);
+        sf->iobuf = malloc(AMC_LOGGER_INTERNAL_FILE_IOBUF_SIZE);
         if (sf->iobuf)
-            setvbuf(fp, sf->iobuf, _IOFBF, AMC_FILE_IOBUF_SIZE);
+            setvbuf(fp, sf->iobuf, _IOFBF, AMC_LOGGER_INTERNAL_FILE_IOBUF_SIZE);
     }
     return 0;
 fail:
@@ -144,18 +146,19 @@ fail:
 
 /* ---- emission ---- */
 
-void amc_internal_emit(const struct amc_msg *m, const char *payload)
+void amc_logger_internal_emit(const struct amc_logger_internal_msg *m,
+                              const char *payload)
 {
-    char line[AMC_MSG_SIZE_MAX];
+    char line[AMC_LOGGER_INTERNAL_MSG_SIZE_MAX];
     int truncated = 0;
-    size_t len = amc_internal_render_line(line, g_amc.cfg.max_message_size, m,
-                                          payload, &truncated);
+    size_t len = amc_logger_internal_render_line(
+        line, amc_logger_internal_global.cfg.max_message_size, m, payload, &truncated);
     if (truncated)
-        AMC_STAT_INC(st_truncated);
+        AMC_LOGGER_INTERNAL_STAT_INC(st_truncated);
 
     int flush_now = m->level >= AMC_LOGGER_LEVEL_ERROR;   /* Design §1 auto-flush */
     for (int i = 0; i < 2; i++) {
-        struct amc_sink *s = &g_amc.sinks[i];
+        struct amc_logger_internal_sink *s = &amc_logger_internal_global.sinks[i];
         if (!s->mtx_inited)
             continue;
         pthread_mutex_lock(&s->mtx);
@@ -175,10 +178,10 @@ void amc_internal_emit(const struct amc_msg *m, const char *payload)
     }
 }
 
-void amc_internal_sinks_flush(void)
+void amc_logger_internal_sinks_flush(void)
 {
     for (int i = 0; i < 2; i++) {
-        struct amc_sink *s = &g_amc.sinks[i];
+        struct amc_logger_internal_sink *s = &amc_logger_internal_global.sinks[i];
         if (!s->mtx_inited)
             continue;
         pthread_mutex_lock(&s->mtx);
@@ -192,10 +195,10 @@ void amc_internal_sinks_flush(void)
     }
 }
 
-void amc_internal_sinks_close(void)
+void amc_logger_internal_sinks_close(void)
 {
     for (int i = 0; i < 2; i++) {
-        struct amc_sink *s = &g_amc.sinks[i];
+        struct amc_logger_internal_sink *s = &amc_logger_internal_global.sinks[i];
         if (!s->mtx_inited)
             continue;
         pthread_mutex_lock(&s->mtx);
@@ -212,10 +215,10 @@ void amc_internal_sinks_close(void)
 }
 
 #ifdef AMC_LOGGER_TESTING
-void amc_internal_sinks_destroy(void)
+void amc_logger_internal_sinks_destroy(void)
 {
     for (int i = 0; i < 2; i++) {
-        struct amc_sink *s = &g_amc.sinks[i];
+        struct amc_logger_internal_sink *s = &amc_logger_internal_global.sinks[i];
         if (s->mtx_inited)
             pthread_mutex_destroy(&s->mtx);
         if (s->is_file && s->fp && !s->closed)

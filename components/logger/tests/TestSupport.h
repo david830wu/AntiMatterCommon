@@ -1,5 +1,5 @@
-#ifndef AMC_TEST_SUPPORT_H_
-#define AMC_TEST_SUPPORT_H_
+#ifndef AMC_LOGGER_TEST_SUPPORT_H_
+#define AMC_LOGGER_TEST_SUPPORT_H_
 
 /*
  * TestSupport.h — shared helpers for the AmcLogger documentation test suite.
@@ -12,10 +12,10 @@
  *     stream to a file so tests can assert on what a user would see.
  *     Discipline: always release before asserting, so Unity failure output
  *     stays visible on the console.
- *   - amc_assert_log_line(): asserts one full log line — it validates the
+ *   - assert_log_line(): asserts one full log line — it validates the
  *     timestamp *shape* ([YYYY-MM-DD HH:MM:SS.ssssss]) and exact-matches
  *     every other field. This helper doubles as the format specification.
- *   - amc_internal_test_reset(): test-only hook (library built with
+ *   - amc_logger_internal_test_reset(): test-only hook (library built with
  *     AMC_LOGGER_TESTING) that tears the logger down to its pre-init state,
  *     letting one test binary simulate many independent process lifetimes.
  *     In production, init/shutdown happen once per process.
@@ -31,11 +31,11 @@
 #include <string.h>
 #include <unistd.h>
 
-void amc_internal_test_reset(void);   /* provided by the AMC_LOGGER_TESTING build */
+void amc_logger_internal_test_reset(void);   /* provided by the AMC_LOGGER_TESTING build */
 
 /* ---------- file helpers ---------- */
 
-static inline char *amc_read_file(const char *path)
+static inline char *read_file(const char *path)
 {
     FILE *fp = fopen(path, "rb");
     if (!fp)
@@ -54,7 +54,7 @@ static inline char *amc_read_file(const char *path)
     return buf;
 }
 
-static inline void amc_write_file(const char *path, const char *content)
+static inline void write_file(const char *path, const char *content)
 {
     FILE *fp = fopen(path, "w");
     TEST_ASSERT_NOT_NULL_MESSAGE(fp, "cannot create test file");
@@ -62,7 +62,7 @@ static inline void amc_write_file(const char *path, const char *content)
     fclose(fp);
 }
 
-static inline int amc_count_lines(const char *text)
+static inline int count_lines(const char *text)
 {
     int n = 0;
     for (const char *p = text; *p; p++)
@@ -72,7 +72,7 @@ static inline int amc_count_lines(const char *text)
 }
 
 /* copy the idx-th line (0-based, without '\n') into out; NULL if absent */
-static inline char *amc_get_line(const char *text, int idx, char *out, size_t outsz)
+static inline char *get_line(const char *text, int idx, char *out, size_t outsz)
 {
     const char *p = text;
     while (idx > 0 && p) {
@@ -92,7 +92,7 @@ static inline char *amc_get_line(const char *text, int idx, char *out, size_t ou
     return out;
 }
 
-static inline int amc_count_lines_containing(const char *text, const char *needle)
+static inline int count_lines_containing(const char *text, const char *needle)
 {
     int n = 0;
     const char *p = text;
@@ -104,17 +104,17 @@ static inline int amc_count_lines_containing(const char *text, const char *needl
 }
 
 /* application lines only: total minus the logger's own MessageLoss summaries */
-static inline int amc_count_app_lines(const char *text)
+static inline int count_app_lines(const char *text)
 {
-    return amc_count_lines(text) - amc_count_lines_containing(text, "[AmcLogger]");
+    return count_lines(text) - count_lines_containing(text, "[AmcLogger]");
 }
 
 /* ---------- stream capture ---------- */
 
-static int amc_saved_stdout_fd_ = -1;
-static int amc_saved_stderr_fd_ = -1;
+static int saved_stdout_fd = -1;
+static int saved_stderr_fd = -1;
 
-static inline void amc_capture_(FILE *stream, const char *path, int *saved)
+static inline void capture_stream(FILE *stream, const char *path, int *saved)
 {
     fflush(stream);
     *saved = dup(fileno(stream));
@@ -123,7 +123,7 @@ static inline void amc_capture_(FILE *stream, const char *path, int *saved)
     close(fd);
 }
 
-static inline void amc_release_(FILE *stream, int *saved)
+static inline void release_stream(FILE *stream, int *saved)
 {
     if (*saved < 0)
         return;
@@ -135,32 +135,32 @@ static inline void amc_release_(FILE *stream, int *saved)
 
 static inline void capture_stdout(void)
 {
-    amc_capture_(stdout, "cap_stdout.txt", &amc_saved_stdout_fd_);
+    capture_stream(stdout, "cap_stdout.txt", &saved_stdout_fd);
 }
 
 /* returns the captured text (malloc'd; free() it) */
 static inline char *release_stdout(void)
 {
-    amc_release_(stdout, &amc_saved_stdout_fd_);
-    return amc_read_file("cap_stdout.txt");
+    release_stream(stdout, &saved_stdout_fd);
+    return read_file("cap_stdout.txt");
 }
 
 static inline void capture_stderr(void)
 {
-    amc_capture_(stderr, "cap_stderr.txt", &amc_saved_stderr_fd_);
+    capture_stream(stderr, "cap_stderr.txt", &saved_stderr_fd);
 }
 
 static inline char *release_stderr(void)
 {
-    amc_release_(stderr, &amc_saved_stderr_fd_);
-    return amc_read_file("cap_stderr.txt");
+    release_stream(stderr, &saved_stderr_fd);
+    return read_file("cap_stderr.txt");
 }
 
 /* safety net for tests that fail while a stream is redirected */
-static inline void amc_release_all_streams(void)
+static inline void release_all_streams(void)
 {
-    amc_release_(stdout, &amc_saved_stdout_fd_);
-    amc_release_(stderr, &amc_saved_stderr_fd_);
+    release_stream(stdout, &saved_stdout_fd);
+    release_stream(stderr, &saved_stderr_fd);
 }
 
 /* ---------- the line-format assertion (the format spec, executable) ----------
@@ -170,7 +170,7 @@ static inline void amc_release_all_streams(void)
  * No spaces between brackets, no space before the payload, microseconds are
  * always 6 digits, TRADER_ID is `-` when the non-_ID macro was used.
  */
-static inline void amc_assert_log_line(const char *line,
+static inline void assert_log_line(const char *line,
                                        const char *level, const char *module,
                                        const char *function, const char *event,
                                        const char *id, const char *payload)
@@ -195,4 +195,4 @@ static inline void amc_assert_log_line(const char *line,
     TEST_ASSERT_EQUAL_STRING(expect, line + 28);
 }
 
-#endif /* AMC_TEST_SUPPORT_H_ */
+#endif /* AMC_LOGGER_TEST_SUPPORT_H_ */

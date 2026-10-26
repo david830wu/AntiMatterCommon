@@ -32,11 +32,11 @@ smallest complete usage example.
   stats and announced in a `[MessageLoss]` summary line
 - **Auto-flush after ERROR/CRITICAL**, periodic flush, blocking `amc_logger_flush()`,
   and opt-in `critical_sync` (CRITICAL is on disk before the call returns)
-- **Compile-time JSON payload composer** — `AMC_JSON((key, fmt, value), …)` and
-  `AMC_KV_*` typed helpers generate the payload structure for you (quoted keys,
+- **Compile-time JSON payload composer** — `AMC_LOGGER_JSON((key, fmt, value), …)` and
+  `AMC_LOGGER_KV_*` typed helpers generate the payload structure for you (quoted keys,
   colons, commas, braces) and expand to the identical single format literal of the
   raw form: zero runtime cost, printf type checking preserved, malformed JSON
-  structure becomes a compile error. For arbitrary data, `AMC_KV_STR_ESC`
+  structure becomes a compile error. For arbitrary data, `AMC_LOGGER_KV_STR_ESC`
   JSON-escapes the value at runtime — hostile quotes, backslashes, and embedded
   newlines can't break the JSON or the one-line format
 - **Fail-fast YAML configuration**: a strict subset parser; any mistake — typo'd key,
@@ -60,8 +60,8 @@ int main(void) {
     AMC_LOGGER_INFO("PrintPi", "{\"pi\":%.7f}", 3.1415926);
     AMC_LOGGER_WARN("JustAnEvent");                          /* payload optional */
     AMC_LOGGER_ERROR_ID("VolumeError", 100,                  /* composed payload */
-                        AMC_JSON(AMC_KV_INT("threshold", 1000),
-                                 AMC_KV_INT("volume", 1200)));
+                        AMC_LOGGER_JSON(AMC_LOGGER_KV_INT("threshold", 1000),
+                                 AMC_LOGGER_KV_INT("volume", 1200)));
 
     amc_logger_shutdown();                /* drains the queue: nothing is lost */
     return 0;
@@ -80,8 +80,8 @@ format string must be string literals (the compiler enforces the latter); payloa
 arguments are not evaluated when a call is filtered out.
 
 Payloads can be written as a raw printf format string, or — recommended — composed
-with `AMC_JSON`, which builds the same literal at compile time from
-`(key, fmt, value…)` tuples and `AMC_KV_INT/I64/U64/F64/STR/BOOL` helpers: keys are
+with `AMC_LOGGER_JSON`, which builds the same literal at compile time from
+`(key, fmt, value…)` tuples and `AMC_LOGGER_KV_INT/I64/U64/F64/STR/BOOL` helpers: keys are
 quoted automatically, structure can't be malformed, and a type mismatch is a compile
 error. Chapter 10 of the test suite is the full guide.
 
@@ -189,7 +189,7 @@ order — each demonstrates one slice of practical usage, including the mistakes
 | 07 AsyncAndReliability | flush visibility, overflow policies, truncation, `critical_sync` |
 | 08 CompileTimeStrip | `AMC_LOGGER_ACTIVE_LEVEL` removes calls from the binary |
 | 09 MultiThreaded | lossless concurrent producers, per-thread ordering |
-| 10 JsonPayload | composing payloads with `AMC_JSON`, the `AMC_KV_*` helpers, and runtime escaping via `AMC_KV_STR_ESC` |
+| 10 JsonPayload | composing payloads with `AMC_LOGGER_JSON`, the `AMC_LOGGER_KV_*` helpers, and runtime escaping via `AMC_LOGGER_KV_STR_ESC` |
 
 The suite passes under ThreadSanitizer and ASan+UBSan. Tests use the vendored
 [Unity](https://github.com/ThrowTheSwitch/Unity) framework (`third_party/unity`, MIT).
