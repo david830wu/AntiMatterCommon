@@ -1,22 +1,6 @@
-cmake_minimum_required(VERSION 3.27)
+# Cross-component tests: the umbrella header, target and package as a whole.
+# Each component's own suite lives in components/<comp>/tests/.
 
-project(AntiMatterCommonTest
-        VERSION 0.1
-        DESCRIPTION "AntiMatterCommon test cases"
-        LANGUAGES C
-)
-
-enable_testing()
-
-find_package(unity REQUIRED)
-
-# list and compile executable
-list(APPEND target_tests "AntiMatterCommonTest")
-
-if ("AntiMatterCommonTest" IN_LIST target_tests)
-    set(test_name "AntiMatterCommonTest")
-    add_executable(${test_name})
-    target_sources(${test_name} PUBLIC ${test_name}.c)
-    target_link_libraries(${test_name} PUBLIC unity::framework AntiMatterCommon::AntiMatterCommon)
-    add_test("${test_name}" ${test_name})
-endif()
+amc_add_test(common AmcCommonTest01_Umbrella LIBRARIES AntiMatter::AntiMatterCommon)
+target_compile_definitions(AmcCommonTest01_Umbrella
+    PRIVATE AMC_COMMON_EXPECTED_VERSION="${PROJECT_VERSION}")
