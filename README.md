@@ -28,7 +28,7 @@ target_link_libraries(app PRIVATE AntiMatter::AntiMatterCommon)
 
 | Component | Target | Header | Purpose |
 | --- | --- | --- | --- |
-| *(none yet — AntiMatterLogger moves in as `components/logger`)* | | | |
+| [logger](components/logger/README.md) | `AntiMatter::AmcLogger` | `AmcLogger.h` | Fast, small, async pure-C logging for trading systems |
 
 Each component lives in `components/<comp>/` with its own headers, sources, tests
 (written as a user manual) and design docs. The naming convention and the rules every

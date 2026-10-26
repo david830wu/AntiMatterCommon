@@ -1,14 +1,19 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with the logger
+component. The repository-wide rules — naming convention, packaging, layering, build
+helpers — are in the AntiMatterCommon root `CLAUDE.md`; this file adds what is specific
+to the logger.
 
 ## Commands
 
+Everything builds from the AntiMatterCommon root:
+
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug   # configure (tests ON when top-level)
-cmake --build build -j                          # build library + tests
-ctest --test-dir build --output-on-failure      # run all test chapters
-ctest --test-dir build -R Test07                # run a single chapter
+cmake --build build -j                          # every component + tests
+ctest --test-dir build -L logger --output-on-failure   # the ten logger chapters
+ctest --test-dir build -R AmcLoggerTest07       # a single chapter
 ```
 
 Sanitizer legs (both must stay green; run before claiming concurrency work done):
@@ -18,46 +23,38 @@ cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="-fsanitize=th
 cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -g"
 ```
 
-Each ctest chapter runs in its own working directory (`build/run/<chapter>/`) — look
-there for a failing test's config/log files. The library target builds with `-Werror`;
+Each chapter runs in its own working directory (`build/run/AmcLoggerTestNN_<Topic>/`) —
+look there for a failing test's config/log files. The library builds with `-Werror`;
 tests build without it.
 
 Benchmarks and the example (both OFF by default):
 
 ```bash
 cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release -DAMC_BUILD_BENCH=ON -DAMC_BUILD_EXAMPLES=ON
-taskset -c 2,3 ./build-rel/BenchEnqueue     # pin TWO cores: worker needs its own
-./build-rel/amc_example                     # run from repo root (config path)
-# spdlog comparison: add -DAMC_BENCH_SPDLOG=ON (FetchContent, needs network)
+taskset -c 2,3 ./build-rel/bin/AmcLoggerBenchEnqueue   # pin TWO cores: worker needs its own
+cd components/logger && ../../build-rel/bin/AmcLoggerExample   # config path is relative
+# spdlog comparison: add -DAMC_LOGGER_BENCH_SPDLOG=ON (FetchContent, needs network)
 ```
 
-Package export (find_package) is validated by `tests/package/` against a fresh
-install; after touching install/export logic run:
-
-```bash
-cmake --install build --prefix /tmp/amc-prefix
-cmake -S tests/package -B /tmp/amc-pkg -DCMAKE_PREFIX_PATH=/tmp/amc-prefix
-cmake --build /tmp/amc-pkg && /tmp/amc-pkg/PackageSmoke
-```
+The installed package is validated by the root `tests/package/`
+(`AmcLoggerPackageSmoke[Cpp]`, see the root `CLAUDE.md` for the commands).
 
 Before accepting any queue/worker change: all three suites, the TSan stress loop
-(`ctest -R "Test07|Test09"` ×25), and BenchEnqueue/BenchThroughput — the queue's
-tuning history and why each piece exists is Architecture §14.13; don't re-tune
-without reading it.
+(`ctest -R "AmcLoggerTest07|AmcLoggerTest09"` ×25), and
+AmcLoggerBenchEnqueue/AmcLoggerBenchThroughput — the queue's tuning history and why each
+piece exists is Architecture §14.13; don't re-tune without reading it.
 
 ## Where truth lives
 
-The project is developed in agreed phases; documents are canonical and kept current:
+The logger is developed in agreed phases; documents are canonical and kept current:
 
-- `docs/Design.md` — FINAL agreed requirements. Do not change behavior away from it
-  without discussing with David first.
+- `docs/Design.md` — FINAL agreed requirements (with dated amendments). Do not change
+  behavior away from it without discussing with David first.
 - `docs/Architecture.md` — the implementation contract; §14 records every refinement
-  (12 so far). When implementation forces a deviation, add it there.
+  (§14.19: the move into AntiMatterCommon and the naming convention). When implementation
+  forces a deviation, add it there.
 - `docs/InitDesign.md` — superseded draft, historical only. `Question1.md`/`Answer1.md`
-  are the design-review Q&A the decisions trace back to.
-
-Workflow preference: propose and agree before moving to a new phase; questions are
-numbered so David can answer tersely.
+  are the design-review Q&A the decisions trace back to; they keep the original names.
 
 ## Big picture
 
@@ -65,20 +62,21 @@ Data flow (async, the default):
 
 ```
 AMC_LOGGER_*() macro                    AmcLoggerCore.c
-  → call-site static cached logger (acquire/release atomic)
-  → relaxed level check (struct amc_logger_internal_handle.level is public for exactly this)
+  → call-site static cached handle (acquire/release atomic)
+  → relaxed level check (struct amc_logger_internal_handle.level is in the header for this)
   → amc_logger_internal_log(): capture timestamp + vsnprintf payload on the stack
   → AmcLoggerQueue.c: copy into MPSC ring slot under queue mutex
-  → single worker thread: batched dequeue, then per-line
+  → single worker thread "amc-logger": batched dequeue, then per-line
   → AmcLoggerSink.c amc_logger_internal_emit(): render (AmcLoggerRender.c) + fwrite
 ```
 
-Sync mode and `critical_sync` CRITICALs skip the queue and call `amc_logger_internal_emit()`
-directly from the calling thread — one shared emission path for all modes.
+Sync mode and `critical_sync` CRITICALs skip the queue and call
+`amc_logger_internal_emit()` directly from the calling thread — one shared emission path
+for all modes.
 
 Two library targets: `amc_logger` (production) and `amc_logger_testing`
-(`-DAMC_LOGGER_TESTING`: adds `amc_logger_internal_test_reset()` and a clock hook). Tests must
-link the testing variant; production has no reset and init/shutdown happen once per
+(`-DAMC_LOGGER_TESTING`: adds `amc_logger_internal_test_reset()` and a clock hook). Tests
+must link the testing variant; production has no reset and init/shutdown happen once per
 process, ever.
 
 ## Invariants you must not break
@@ -92,13 +90,14 @@ process, ever.
   `amc_logger_init` re-sweeps all existing loggers' levels before applying overrides.
 - **The `"\1" __VA_ARGS__` sentinel** in the macros: enforces literal format strings,
   makes empty payloads work, and avoids `-Wformat-zero-length` in user builds.
-  `amc_logger_internal_log` skips the first byte. EVENT strings are stored by pointer — the
-  literal-only contract is documented API.
-- **`AMC_LOGGER_JSON` must stay a pure compile-time literal composer** (Architecture §14.14):
-  it expands to exactly the raw form's format literal + args — Test10 asserts byte
-  equality. Never turn it into anything with runtime cost. The single deliberate
-  runtime piece is `AMC_LOGGER_KV_STR_ESC` → `amc_logger_json_escape()` (per-thread static
-  TLS ring, 16 × 1 KB — §14.15); keep its slot count ≥ the composer's pair cap.
+  `amc_logger_internal_log` skips the first byte. EVENT strings are stored by pointer —
+  the literal-only contract is documented API.
+- **`AMC_LOGGER_JSON` must stay a pure compile-time literal composer** (Architecture
+  §14.14): it expands to exactly the raw form's format literal + args — chapter 10
+  asserts byte equality. Never turn it into anything with runtime cost. The single
+  deliberate runtime piece is `AMC_LOGGER_KV_STR_ESC` → `amc_logger_json_escape()`
+  (per-thread static TLS ring, 16 × 1 KB — §14.15); keep its slot count ≥ the
+  composer's pair cap.
 - **Fail fast** (philosophy 00): config mistakes are init failures with a
   `file:line: message` stderr diagnostic — never a silent default. Every new
   diagnostic needs a chapter-04 test asserting its exact text. Runtime loss (drops,
@@ -107,33 +106,38 @@ process, ever.
 - The config parser (`AmcLoggerConfig.c`) is a pure function over a string — keep it
   free of globals so it stays directly unit-testable. It accepts a strict YAML subset
   and must reject everything outside it loudly (no sequences, anchors, multiline).
+- **One logger per process, also when embedded**: AntiMatterFusion links the static
+  library PRIVATE into several shared libraries and relies on symbol interposition, so
+  everything with external linkage keeps default visibility (root `CLAUDE.md`).
 
 ## Tests are the user manual
 
-`tests/Test01…Test10` are documentation chapters written from the user's point of view,
-meant to be read in order — narrative header comment per file, one behavior per test.
-New user-visible behavior belongs in the fitting chapter, written in the same style.
-Test discipline: always release captured stdout/stderr (`release_stdout()`) *before*
-asserting, or Unity's failure output lands in the capture file. `TestSupport.h`'s
-`assert_log_line()` is the executable line-format spec. Test08 is compiled with
-`-DAMC_LOGGER_ACTIVE_LEVEL=AMC_LOGGER_LEVEL_WARN` to prove compile-time stripping.
+`tests/AmcLoggerTest01…AmcLoggerTest10` are documentation chapters written from the user's
+point of view, meant to be read in order — narrative header comment per file, one behavior
+per test. New user-visible behavior belongs in the fitting chapter, written in the same
+style. Test discipline: always release captured stdout/stderr (`release_stdout()`)
+*before* asserting, or Unity's failure output lands in the capture file.
+`AmcLoggerTestSupport.h`'s `assert_log_line()` is the executable line-format spec; the
+MODULE a chapter asserts is its own file name (`"AmcLoggerTest02_LogFormat"`).
+AmcLoggerTest08 is compiled with `-DAMC_LOGGER_ACTIVE_LEVEL=AMC_LOGGER_LEVEL_WARN` to
+prove compile-time stripping.
 
 ## Conventions
 
-- Pure C, `-std=gnu11` (C11 + `##__VA_ARGS__`, `_Thread_local`, GNU attributes);
-  the public header is C-only (`#error` under `__cplusplus`). Linux gcc-13 and macOS
-  AppleClang are the supported toolchains; POSIX APIs only.
-- Naming: public `amc_`/`AMC_LOGGER_` (AMC = AntiMatterCommon, the parent repo this
-  integrates into), internals `amc_logger_internal_`, PascalCase filenames, snake_case
-  functions.
-- Zero runtime dependencies beyond libc/pthreads. Unity is vendored in
-  `third_party/unity` (test-only); a future spdlog benchmark dependency is allowed for
-  bench targets only.
+- Pure C, `-std=gnu11` (C11 + `##__VA_ARGS__`, `_Thread_local`, GNU attributes). The
+  public header is usable from C and C++ (Architecture §14.16–17); the C++ package smoke
+  test keeps that true. Linux gcc-13 and macOS AppleClang are the supported toolchains;
+  POSIX APIs only.
+- Naming follows the root convention: API `amc_logger_*` / `AMC_LOGGER_*`, everything else
+  `amc_logger_internal_*` / `AMC_LOGGER_INTERNAL_*`; file-local helpers are unprefixed.
+- Zero runtime dependencies beyond libc/pthreads. Unity (test-only) is vendored at the
+  root; the spdlog benchmark dependency is allowed for bench targets only.
 
 ## Current state / roadmap
 
-v1 complete: library + 9-chapter test suite green (incl. TSan/ASan/UBSan), `bench/`
+v1 complete and released standalone up to v0.4.0; now a component of AntiMatterCommon
+0.5.0. Common retains a single import snapshot; standalone history and release tags
+remain in [AntiMatterLogger](https://github.com/david830wu/AntiMatterLogger).
+Ten-chapter suite green (incl. TSan/ASan/UBSan), `bench/`
 harness with measured numbers (README table; investigation in Architecture §14.13),
-`examples/` target, GitHub Actions CI matrix ({ubuntu gcc-13, macos-14} ×
-{Release, ASan/UBSan, TSan}) in `.github/workflows/ci.yml`. Remaining ideas live in
-Design.md §13 future-work parking lot.
+`examples/` target. Remaining ideas live in Design.md §13 future-work parking lot.

@@ -42,11 +42,13 @@ One repository, one CMake package (`AntiMatterCommon`), one version. Components 
 `components/<comp>/` and are listed in `AMC_COMPONENTS` in the top-level
 `CMakeLists.txt`, in dependency order. A component is a plain part of Common: it has
 no `project()`, Unity copy, install/package logic, build script or CI of its own —
-those exist once, at the root, and `cmake/AmcCommon.cmake` holds the shared helpers.
+those exist once, at the root. `cmake/AmcCommon.cmake` holds the shared helpers a
+component's CMakeLists uses: `amc_add_library`, `amc_add_test`, `amc_add_bench`,
+`amc_add_example`.
 
 ```
 components/<comp>/
-├── CMakeLists.txt          library amc_<comp>, its tests/bench/examples
+├── CMakeLists.txt          amc_add_library(<comp> …) + tests/ bench/ examples/
 ├── include/Amc<Comp>.h     public header(s), installed flat into include/
 ├── src/                    Amc<Comp>*.c, Amc<Comp>Internal.h
 ├── tests/                  Amc<Comp>Test<NN>_<Topic>.c — the user manual
@@ -70,19 +72,24 @@ convention below.
 | --- | --- | --- |
 | Public functions and types | `amc_<comp>_*`, `struct amc_<comp>_*` | `amc_logger_init`, `struct amc_logger_stats` |
 | Public macros | `AMC_<COMP>_*` | `AMC_LOGGER_INFO`, `AMC_LOGGER_JSON` |
-| Everything else with external linkage or visible in a public header (internal functions and globals, macro plumbing, macro-local names) | `amc_<comp>_internal_*`, `AMC_<COMP>_INTERNAL_*` | `amc_logger_internal_emit` |
+| Every other name in the component's namespace — internal functions, globals, types, enum constants and macros, header plumbing, macro-local names | `amc_<comp>_internal_*`, `AMC_<COMP>_INTERNAL_*` | `amc_logger_internal_emit`, `AMC_LOGGER_INTERNAL_MSG_SIZE_MAX` |
 | Include guards | `AMC_<COMP>[_<PART>]_H_` | `AMC_COMMON_VERSION_H_` |
 | Files | `Amc<Comp>*.{h,c}` | `AmcLoggerQueue.c` |
 | Library target | `amc_<comp>`, exported as `AntiMatter::Amc<Comp>` | `amc_logger` → `AntiMatter::AmcLogger` |
-| Test-seam build of the library | `amc_<comp>_testing` | `amc_logger_testing` |
+| Test-seam build of the library | `amc_<comp>_testing`, compiled with `AMC_<COMP>_TESTING` | `amc_logger_testing` |
 | Package component | `<Comp>` | `find_package(AntiMatterCommon 0.5 COMPONENTS Logger)` |
 | Tests — one name for source file, target and ctest test | `Amc<Comp>Test<NN>_<Topic>`, ctest label `<comp>` | `AmcLoggerTest07_AsyncAndReliability` |
 | Test helpers | `Amc<Comp>Test<Role>.{h,c}` | `AmcLoggerTestSupport.h` |
-| Benchmarks, examples, package smoke tests | `Amc<Comp>Bench<Name>`, `Amc<Comp>Example[<Name>]`, `Amc<Comp>PackageSmoke[Cpp]` | `AmcCommonExample` |
+| Benchmarks, examples, package smoke tests | `Amc<Comp>Bench<Name>`, `Amc<Comp>Example[<Name>]`, `Amc<Comp>PackageSmoke[Cpp]` | `AmcLoggerBenchEnqueue`, `AmcLoggerExample` |
+| Threads a component starts | `amc-<comp>[-<role>]` (≤ 15 characters) | `amc-logger` |
 | CMake options | `AMC_BUILD_{TESTS,EXAMPLES,BENCH}` for all, `AMC_<COMP>_*` for one component | |
 
-`amc_add_test()` rejects a test name that breaks the pattern at configure time. File-local
-(`static`) names are free.
+So an `amc_<comp>_` / `AMC_<COMP>_` name without `_internal_` is always API, declared in
+`include/`, and nothing uses the bare `amc_` / `AMC_` namespace. File-local (`static`)
+names are free and carry no prefix (test helpers such as `assert_log_line`). Example
+programs model user code, so their sources keep user-style names; only the target follows
+the pattern. `amc_add_test()`, `amc_add_bench()` and `amc_add_example()` reject names that
+break the pattern at configure time.
 
 ## Rules for every component
 
@@ -113,19 +120,20 @@ convention below.
 Propose and agree before moving to a new phase; questions are numbered so David can
 answer tersely. Changes land through PRs with CI green on all six legs ({ubuntu gcc-13,
 macos-14} × {Release, ASan/UBSan, TSan}).
+Keep `master` history linear: use squash or rebase merges for PRs.
 
 ## Current state
 
-AntiMatterLogger is being migrated in as `components/logger` (agreed 2026-10-26; clean
-structure over legacy compatibility):
+Components: `logger` (AmcLogger, `components/logger/`) — migrated from the standalone
+AntiMatterLogger repository (agreed 2026-10-26; clean structure over legacy
+compatibility). Common retains a single v0.4.0 import snapshot; the standalone history
+and release tags remain in [AntiMatterLogger](https://github.com/david830wu/AntiMatterLogger).
+It follows this convention in full (`components/logger/docs/Architecture.md` §14.19).
 
-1. Logger v0.4.0, the last standalone release.
-2. Common foundation: this layout, package, conventions, build script, CI.
-3. Import the logger's history with `git filter-repo` into `components/logger`
-   (tags become `logger-v*`), as a pure move.
-4. Conform the logger to this convention: root helpers instead of its own build, the
-   symbol and API renames (`AMC_JSON` → `AMC_LOGGER_JSON`, `AMC_KV_*` →
-   `AMC_LOGGER_KV_*`, plumbing → `amc_logger_internal_*`), test renames.
-5. Switch downstream over (AntiMatterFusion CMake, `scripts/build.sh`, Dockerfiles and
-   macro call sites; AntiMatterDagger `scripts/1_envbuild/build.sh`), then archive the
-   AntiMatterLogger repository.
+Remaining migration steps:
+
+1. Switch downstream over: AntiMatterFusion (`find_package(AntiMatterCommon 0.5
+   COMPONENTS Logger)`, `scripts/build.sh`, `docker/Dockerfile.{kit,model}`, the
+   `AMC_LOGGER_JSON` / `AMC_LOGGER_KV_*` call sites) and AntiMatterDagger
+   (`scripts/1_envbuild/build.sh`).
+2. Archive the AntiMatterLogger repository.

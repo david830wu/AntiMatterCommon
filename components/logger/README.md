@@ -1,23 +1,25 @@
-# AntiMatterLogger
+# AmcLogger — the logger component
 
-[![CI](https://github.com/david830wu/AntiMatterLogger/actions/workflows/ci.yml/badge.svg)](https://github.com/david830wu/AntiMatterLogger/actions/workflows/ci.yml)
-
-A fast, small, pure-C (C11) logging library for trading systems, built for the
-AntiMatterCommon ecosystem (`amc_` / `AMC_LOGGER_` prefix). Inspired by spdlog's
-architecture, stripped to a fixed format and a deliberately tiny core (~1,600 LOC,
-zero dependencies beyond libc and pthreads).
+A fast, small, pure-C (C11) logging library for trading systems, and the `logger`
+component of [AntiMatterCommon](../../README.md) (`amc_logger_` / `AMC_LOGGER_` prefix).
+Inspired by spdlog's architecture, stripped to a fixed format and a deliberately tiny
+core (~1,600 LOC, zero dependencies beyond libc and pthreads).
 
 ## TL;DR
 
+From the AntiMatterCommon root:
+
 ```bash
 ./scripts/build_component.sh
-ctest --test-dir build --output-on-failure
+ctest --test-dir build -L logger --output-on-failure
 ```
 
-This builds the static library and tests, then installs the header, library, and
-CMake package into `.local/`. Consumers use `find_package(AntiMatterLogger 0.4
-REQUIRED)` and link `AntiMatter::AmcLogger`. The first program below is the
-smallest complete usage example.
+```cmake
+find_package(AntiMatterCommon 0.5 REQUIRED COMPONENTS Logger)
+target_link_libraries(app PRIVATE AntiMatter::AmcLogger)
+```
+
+The first program below is the smallest complete usage example.
 
 ## Features
 
@@ -43,11 +45,12 @@ smallest complete usage example.
   bad level, tab, out-of-subset YAML — fails init with a `file:line:` diagnostic
 - **Compile-time level stripping** (`AMC_LOGGER_ACTIVE_LEVEL`) and cheap runtime
   filtering (one relaxed atomic load per filtered call)
-- **Worker CPU pinning** (`worker_cpu`) — the async worker is created directly on a
-  designated core and never runs anywhere else, keeping the logging thread off
-  carefully-assigned trading cores (Linux; macOS warns and runs unpinned)
+- **Worker CPU pinning** (`worker_cpu`) — the async worker thread (`amc-logger`) is
+  created directly on a designated core and never runs anywhere else, keeping logging
+  off carefully-assigned trading cores (Linux; macOS warns and runs unpinned)
 - Sinks: `stdout` and `basic_file` with `$TODAY`/`$PID` path variables and automatic
   directory creation
+- Usable from C and C++: the lifecycle is `extern "C"` and the macros compile in both
 
 ## Quick start
 
@@ -61,7 +64,7 @@ int main(void) {
     AMC_LOGGER_WARN("JustAnEvent");                          /* payload optional */
     AMC_LOGGER_ERROR_ID("VolumeError", 100,                  /* composed payload */
                         AMC_LOGGER_JSON(AMC_LOGGER_KV_INT("threshold", 1000),
-                                 AMC_LOGGER_KV_INT("volume", 1200)));
+                                        AMC_LOGGER_KV_INT("volume", 1200)));
 
     amc_logger_shutdown();                /* drains the queue: nothing is lost */
     return 0;
@@ -81,9 +84,12 @@ arguments are not evaluated when a call is filtered out.
 
 Payloads can be written as a raw printf format string, or — recommended — composed
 with `AMC_LOGGER_JSON`, which builds the same literal at compile time from
-`(key, fmt, value…)` tuples and `AMC_LOGGER_KV_INT/I64/U64/F64/STR/BOOL` helpers: keys are
-quoted automatically, structure can't be malformed, and a type mismatch is a compile
-error. Chapter 10 of the test suite is the full guide.
+`(key, fmt, value…)` tuples and the `AMC_LOGGER_KV_INT/I64/U64/F64/STR/BOOL` helpers:
+keys are quoted automatically, structure can't be malformed, and a type mismatch is a
+compile error. Chapter 10 of the test suite is the full guide.
+
+Every name in `AmcLogger.h` that contains `_internal_` / `_INTERNAL_` is plumbing the
+macros need — never use it directly.
 
 ## Configuration
 
@@ -96,7 +102,7 @@ queue_size: 8192
 queue_full_policy: block       # block | overrun_oldest | discard_new
 max_message_size: 2048         # bytes per line; overflow ends with ...(truncated)
 flush_every_ms: 1000
-utc_offset_hours: 8            # timestamps and $TODAY
+utc_offset_hours: 8            # timestamps and $TODAY (YYYYMMDD)
 critical_sync: false           # CRITICAL bypasses the queue
 # worker_cpu: 3                # pin the async worker to a core (Linux; optional)
 
@@ -113,70 +119,35 @@ Unknown keys, levels, sinks, `$VAR`s, ranges — all are init errors with precis
 diagnostics on stderr. The supported YAML subset is deliberately small; anything
 outside it (sequences, anchors, multiline scalars, tabs) is rejected loudly.
 
-## Detailed build and use
+## Build and use
 
-Requires CMake ≥ 3.20 and gcc-13 (Linux) or AppleClang ≥ 14 (macOS); POSIX only.
-
-### Repository build
-
-Use the repository-owned component interface for a standalone or composed build:
+The logger builds, tests and installs with AntiMatterCommon — see the
+[root README](../../README.md) for requirements, `scripts/build_component.sh` and the
+build options. Logger-specific commands, from the AntiMatterCommon root:
 
 ```bash
-./scripts/build_component.sh
-ctest --test-dir build --output-on-failure
+cmake -S . -B build && cmake --build build -j
+ctest --test-dir build -L logger --output-on-failure     # the ten chapters
+ctest --test-dir build -R AmcLoggerTest07                # one chapter
 ```
 
-Its defaults are `build/` for CMake state, `.local/` for the install, a `Release`
-build, and tests enabled.
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `AM_PREFIX` | `.local` | Install prefix |
-| `AM_BUILD_DIR` | `build` | CMake build directory |
-| `AM_BUILD_TESTS` | `ON` | Build the test suite |
-| `AM_CMAKE_PREFIX_PATH` | empty | Additional semicolon-separated CMake package prefixes |
-| `BUILD_TYPE` | `Release` | CMake build type |
-| `NUM_THREADS` | host CPU count | Parallel build jobs |
-| `AM_CLEAN_BUILD` | `false` | Set to `true` to configure with `cmake --fresh` |
-
-For example, a parent stack can select one shared prefix:
-
-```bash
-AM_PREFIX=/path/to/prefix ./scripts/build_component.sh
-```
-
-The equivalent manual developer build, without installing, is:
-
-```bash
-cmake -S . -B build -DAMC_BUILD_TESTS=ON
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-```
-
-### Consume from CMake
-
-The target name is the same for a vendored or installed dependency:
+Consumers request the component and link its target — or link
+`AntiMatter::AntiMatterCommon` and include `AmcCommon.h` for every component:
 
 ```cmake
-# vendored:
-add_subdirectory(AntiMatterLogger)
-# or installed (cmake --install build --prefix <prefix>):
-find_package(AntiMatterLogger 0.4 REQUIRED)
-
+find_package(AntiMatterCommon 0.5 REQUIRED COMPONENTS Logger)
 target_link_libraries(app PRIVATE AntiMatter::AmcLogger)
 ```
 
-Configure an installed consumer with `-DCMAKE_PREFIX_PATH=/path/to/prefix`.
-
-The install tree carries the full CMake package (targets export, config with the
-Threads dependency, `SameMinorVersion` version file) under
-`lib/cmake/AntiMatterLogger/`; `tests/package/` is a smoke-test consumer that CI
-builds against a fresh install. Include `AmcLogger.h` (the header is C-only).
+The library is static and position-independent, so it can be embedded PRIVATE into
+shared libraries; with default symbol visibility, several shared libraries embedding
+it still share one logger per process.
 
 ## The tests are the manual
 
-`tests/Test01…Test09` are written as documentation chapters, meant to be read in
-order — each demonstrates one slice of practical usage, including the mistakes:
+`tests/AmcLoggerTest01…AmcLoggerTest10` are written as documentation chapters, meant to
+be read in order — each demonstrates one slice of practical usage, including the
+mistakes:
 
 | Chapter | Covers |
 | ------- | ------ |
@@ -186,20 +157,19 @@ order — each demonstrates one slice of practical usage, including the mistakes
 | 04 Configuration | the fail-fast diagnostic battery, line by line |
 | 05 FileSink | sink selection, `$TODAY`/`$PID`, auto-mkdir, append across restarts |
 | 06 Lifecycle | log-before-init, double init, shutdown twice, log-after-shutdown |
-| 07 AsyncAndReliability | flush visibility, overflow policies, truncation, `critical_sync` |
+| 07 AsyncAndReliability | flush visibility, overflow policies, truncation, `critical_sync`, worker pinning |
 | 08 CompileTimeStrip | `AMC_LOGGER_ACTIVE_LEVEL` removes calls from the binary |
 | 09 MultiThreaded | lossless concurrent producers, per-thread ordering |
 | 10 JsonPayload | composing payloads with `AMC_LOGGER_JSON`, the `AMC_LOGGER_KV_*` helpers, and runtime escaping via `AMC_LOGGER_KV_STR_ESC` |
 
-The suite passes under ThreadSanitizer and ASan+UBSan. Tests use the vendored
-[Unity](https://github.com/ThrowTheSwitch/Unity) framework (`third_party/unity`, MIT).
+The suite passes under ThreadSanitizer and ASan+UBSan.
 
 ## Performance
 
 Measured with the in-repo harness (`-DAMC_BUILD_BENCH=ON`, always compiled `-O2`;
-run on a quiet machine, e.g. `taskset -c 2,3 ./build/BenchEnqueue`). Numbers below
-are from a development VM (x86-64, gcc-13, two pinned cores) — indicative, not
-authoritative; expect better on production hardware:
+run on a quiet machine, e.g. `taskset -c 2,3 ./build/bin/AmcLoggerBenchEnqueue`).
+Numbers below are from a development VM (x86-64, gcc-13, two pinned cores) —
+indicative, not authoritative; expect better on production hardware:
 
 | Metric | Target | AmcLogger | spdlog v1.14.1 async, same box |
 | ------ | ------ | --------- | ------------------------------ |
@@ -215,16 +185,17 @@ reach 1 µs p99 are documented in [`docs/Architecture.md`](docs/Architecture.md)
 §14.13. At the intended production envelope (~10k msgs/s) the saturated regime does
 not apply.
 
-Compare against spdlog yourself with `-DAMC_BENCH_SPDLOG=ON` (FetchContent; C++ is
-confined to that one benchmark target).
+Compare against spdlog yourself with `-DAMC_LOGGER_BENCH_SPDLOG=ON` (FetchContent; C++
+is confined to that one benchmark target).
 
 ## Example program
 
-`examples/` builds the Design.md §9 walkthrough:
+`examples/` builds the Design.md §9 walkthrough as `AmcLoggerExample`. Its config path
+is relative, so run it from this directory:
 
 ```bash
-cmake -S . -B build -DAMC_BUILD_EXAMPLES=ON && cmake --build build -j
-./build/amc_example        # run from the repo root; uses config/logger.yaml
+cmake -S . -B build -DAMC_BUILD_EXAMPLES=ON && cmake --build build -j   # Common root
+cd components/logger && ../../build/bin/AmcLoggerExample
 ```
 
 ## Design documents
@@ -232,8 +203,9 @@ cmake -S . -B build -DAMC_BUILD_EXAMPLES=ON && cmake --build build -j
 The library was designed before it was built, and the documents are kept current:
 [`docs/Design.md`](docs/Design.md) (agreed requirements),
 [`docs/Architecture.md`](docs/Architecture.md) (implementation contract and every
-refinement made along the way, including the benchmark-driven queue tuning).
+refinement made along the way, including the benchmark-driven queue tuning and the
+move into AntiMatterCommon, §14.19).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see the AntiMatterCommon [LICENSE](../../LICENSE).

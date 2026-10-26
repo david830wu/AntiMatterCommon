@@ -1,4 +1,4 @@
-# AntiMatterLogger — Architecture (v1)
+# AmcLogger — Architecture (v1)
 
 **Status**: IMPLEMENTED (2026-07-22). Implements `Design.md` (FINAL). The v1 code lives
 under `src/`/`include/`; the test suite under `tests/` doubles as the user manual.
@@ -6,7 +6,8 @@ under `src/`/`include/`; the test suite under `tests/` doubles as the user manua
 discovered while making the tests green.
 
 §14 lists every place where this document *refines* `Design.md` — read that section even if
-you skim the rest. §15 proposes the implementation order.
+you skim the rest. §15 proposes the implementation order. Since 2026-10-26 the logger is
+a component of AntiMatterCommon (`components/logger`) — §14.19.
 
 ---
 
@@ -35,36 +36,41 @@ state beyond a level and a name.
 ## 2. Repository layout
 
 ```
-AntiMatterLogger/
-├── CMakeLists.txt
+components/logger/             # in AntiMatterCommon (§14.19)
+├── CMakeLists.txt             # amc_add_library(logger …) + tests/ bench/ examples/
 ├── include/
-│   └── AmcLogger.h            # the only public header (full listing in §3)
+│   └── AmcLogger.h            # the only public header (v1 listing in §3)
 ├── src/
-│   ├── AmcLoggerInternal.h    # shared internal structs/decls (amc_logger_internal_* namespace)
-│   ├── AmcLoggerCore.c        # amc_logger_internal_global, init/shutdown/flush/stats, resolve, amc_logger_internal_log
+│   ├── AmcLoggerInternal.h    # shared internal structs/decls (amc_logger_internal_*)
+│   ├── AmcLoggerCore.c        # global state, init/shutdown/flush/stats, resolve, log entry
 │   ├── AmcLoggerQueue.c       # MPSC ring, enqueue policies, worker thread, flush protocol
 │   ├── AmcLoggerRender.c      # line renderer, timestamp cache, truncation
 │   ├── AmcLoggerSink.c        # path expansion, mkdir -p, open/write/flush/close, error report
 │   └── AmcLoggerConfig.c      # YAML subset parser (pure function) + defaults + validation
-├── tests/                     # TestConfig.c TestRender.c TestQueue.c TestLifecycle.c
-│                              # TestModule.c TestStress.c + AmcTest.h (tiny harness)
-├── bench/                     # BenchDisabled.c BenchEnqueue.c BenchThroughput.c
-│                              # BenchSpdlog.cpp (optional, -DAMC_BENCH_SPDLOG=ON)
+├── tests/                     # AmcLoggerTest01_QuickStart.c … AmcLoggerTest10_JsonPayload.c
+│                              # + AmcLoggerTestSupport.h, AmcLoggerTestHelperModule.{h,c}
+├── bench/                     # AmcLoggerBench{Disabled,Enqueue,Throughput}.c, AmcLoggerBenchSupport.h
+│                              # AmcLoggerBenchSpdlog.cpp (optional, -DAMC_LOGGER_BENCH_SPDLOG=ON)
 ├── examples/                  # main.c, LongTermExtractor.{h,c} from Design.md §9
 ├── config/logger.yaml         # example configuration
-└── docs/                      # InitDesign.md (superseded), Answer1.md, Design.md, this file
+└── docs/                      # InitDesign.md (superseded), Question1/Answer1.md, Design.md, this file
 ```
 
-Estimated size: ~1,700 LOC library, well within "small and simple".
+Estimated size: ~1,700 LOC library, well within "small and simple". Unity and the package
+smoke consumers (`tests/package/AmcLoggerPackageSmoke[Cpp]`) live at the AntiMatterCommon root.
 
-## 3. Public header — `include/AmcLogger.h` (complete)
+## 3. Public header — `include/AmcLogger.h` (v1 design listing)
+
+The header as designed for v1, with names updated by §14.19. `include/AmcLogger.h` is
+authoritative: it has since gained the `AMC_LOGGER_JSON` composer (§14.14–15) and the C++
+surface (§14.16–17).
 
 ```c
 #ifndef AMC_LOGGER_H_
 #define AMC_LOGGER_H_
 
 /*
- * AmcLogger — AntiMatterLogger public API.
+ * AmcLogger — the AntiMatterCommon logger component's public API.
  * C11 (-std=gnu11) only in v1; do not include from C++ translation units (§14.6).
  * User-facing surface: amc_logger_init/shutdown/flush/get_stats + AMC_LOGGER_* macros.
  * Every other visible symbol is macro plumbing — never call it directly.
@@ -531,26 +537,33 @@ empty document (FQ2): defaults, stdout only.
 
 ## 12. Build system and CI
 
-- **CMake ≥ 3.20**: target `amc_logger` (STATIC), `C_STANDARD 11` + `C_EXTENSIONS ON`
-  (= gnu11), warnings `-Wall -Wextra -Wformat=2 -Werror`, link `Threads::Threads`.
-  Alias `AntiMatter::AmcLogger`. The install tree is a full CMake package
-  (`find_package(AntiMatterLogger)`): targets export under the `AntiMatter::`
-  namespace (EXPORT_NAME `AmcLogger`), a package config that `find_dependency`s
-  Threads, a `SameMinorVersion` version file (0.x: minor bumps may break), and
-  GNUInstallDirs paths. `tests/package/` is the downstream smoke consumer CI runs
-  against a fresh install.
-- **Options**: `AMC_BUILD_TESTS` (ON when top-level), `AMC_BUILD_BENCH` (OFF),
-  `AMC_BENCH_SPDLOG` (OFF; FetchContent, C++ confined to `bench/BenchSpdlog.cpp`),
-  `AMC_BUILD_EXAMPLES` (OFF), `AMC_SANITIZE=off|address|thread|undefined`.
-- **CI** (GitHub Actions): matrix {ubuntu (gcc-13), macos-14 (AppleClang)} ×
-  {Release, Debug+ASan/UBSan, Debug+TSan} → build, ctest. Bench targets are
-  build-verified in CI, not timed.
+The logger is a component of AntiMatterCommon (§14.19): the root build owns everything
+below and applies it to every component the same way (AntiMatterCommon `CLAUDE.md`).
+
+- **CMake ≥ 3.27**, `amc_add_library(logger …)`: target `amc_logger` (STATIC, PIC),
+  `C_STANDARD 11` + `C_EXTENSIONS ON` (= gnu11), warnings `-Wall -Wextra -Wformat=2
+  -Werror`, link `Threads::Threads`, exported as `AntiMatter::AmcLogger`.
+  `amc_logger_testing` compiles the same sources with `-DAMC_LOGGER_TESTING` (the test
+  seam) whenever tests are built.
+- **Package**: component `Logger` of the single AntiMatterCommon package —
+  `find_package(AntiMatterCommon 0.5 REQUIRED COMPONENTS Logger)`; one version for all of
+  Common, `SameMinorVersion` (0.x: minor bumps may break). The root `tests/package/` builds
+  the C and C++ smoke consumers `AmcLoggerPackageSmoke[Cpp]` against a fresh install.
+- **Options**: `AMC_BUILD_TESTS` (ON when Common is top-level), `AMC_BUILD_BENCH` (OFF),
+  `AMC_BUILD_EXAMPLES` (OFF), and the logger's own `AMC_LOGGER_BENCH_SPDLOG` (OFF;
+  FetchContent, C++ confined to `bench/AmcLoggerBenchSpdlog.cpp`). Sanitizers go through
+  `CMAKE_C_FLAGS`, exactly as the CI legs pass them.
+- **CI** (GitHub Actions, AntiMatterCommon root): matrix {ubuntu (gcc-13), macos-14
+  (AppleClang)} × {Release, Debug+ASan/UBSan, Debug+TSan} → build, ctest. The Release leg
+  also runs the example and benchmarks (informational, not timed) and the package smoke
+  consumers.
 
 ## 13. Test and benchmark plan (maps Design §11/§10)
 
-The tests use the vendored **Unity** framework (`third_party/unity`, v2.6.1, MIT) and
+The tests use the **Unity** framework (vendored once at the AntiMatterCommon root,
+`third_party/unity`, v2.6.1, MIT) and
 are organized as **documentation chapters** written from the user's point of view —
-read `tests/Test01…Test09` in order and you have read the user manual:
+read `tests/AmcLoggerTest01…AmcLoggerTest10` in order and you have read the user manual:
 
 | Chapter | What a user learns (and what it proves) |
 | ------- | --------------------------------------- |
@@ -563,11 +576,12 @@ read `tests/Test01…Test09` in order and you have read the user manual:
 | 07 AsyncAndReliability | flush visibility, the three overflow policies with honest accounting + MessageLoss summary, truncation marker, critical_sync, sync mode |
 | 08 CompileTimeStrip | `AMC_LOGGER_ACTIVE_LEVEL` removes calls from the binary (compiled with `-D…=WARN`) |
 | 09 MultiThreaded | concurrent producers: lossless under `block`, intact lines, per-thread program order |
+| 10 JsonPayload | `AMC_LOGGER_JSON` and the `AMC_LOGGER_KV_*` helpers (byte-identical to the raw form), runtime escaping via `AMC_LOGGER_KV_STR_ESC` |
 
 The full suite passes under ThreadSanitizer and ASan+UBSan (CI runs those legs).
-Bench (`-DAMC_BUILD_BENCH=ON`, always compiled -O2): `BenchDisabled`, `BenchEnqueue`
+Bench (`-DAMC_BUILD_BENCH=ON`, always compiled -O2): `AmcLoggerBenchDisabled`, `AmcLoggerBenchEnqueue`
 (burst percentiles + a paced 10k msg/s phase measuring the worker-wake cost),
-`BenchThroughput`, and `BenchSpdlog` (`-DAMC_BENCH_SPDLOG=ON`, FetchContent, C++
+`AmcLoggerBenchThroughput`, and `AmcLoggerBenchSpdlog` (`-DAMC_LOGGER_BENCH_SPDLOG=ON`, FetchContent, C++
 confined to that target). Measured results and the tail investigation: §14.13.
 
 ## 14. Refinements relative to Design.md — please eyeball these
@@ -651,7 +665,7 @@ confined to that target). Measured results and the tail investigation: §14.13.
     raw form's exact single format literal via string concatenation — braces, quoted
     keys, colons and commas are generated, so malformed payload structure becomes a
     compile error, while the expansion is byte-identical to the hand-written form
-    (proved by a Test10 equality test): zero runtime cost, printf checking and the
+    (proved by an AmcLoggerTest10 equality test): zero runtime cost, printf checking and the
     literal-only contract preserved. Value expansion embeds a leading `, ##__VA_ARGS__`
     so tuples may carry zero value arguments (constant fragments like
     `("armed", "true")`). Capacity 1–16 pairs; 17+ dispatches to the deliberately
@@ -682,7 +696,7 @@ confined to that target). Measured results and the tail investigation: §14.13.
     NUMA: the ring's first-touch deliberately stays with the `amc_logger_init`
     caller so slot pages land near the producers, favoring enqueue latency over
     drain-side locality — initialize on the node your producers run on. Verified
-    black-box in Test07 via `/proc/self/task/<tid>/comm == "amc-logger"` →
+    black-box in AmcLoggerTest07 via `/proc/self/task/<tid>/comm == "amc-logger"` →
     `Cpus_allowed_list`; the macOS CI legs verify the warn-and-run path. Version
     0.3.0.
 
@@ -740,3 +754,39 @@ memory-order changes, no new state. Callers that only need the logger running te
 
 Init remains **single-threaded by contract** (§6.6): this is not a thread-safety fix, and
 concurrent FIRST calls still race.
+
+### 14.19 A component of AntiMatterCommon, under Common's naming convention (2026-10-26)
+
+The logger moved into AntiMatterCommon as `components/logger`. Common retains a single
+snapshot import of the final standalone release, v0.4.0
+([source commit `cebd2e1`](https://github.com/david830wu/AntiMatterLogger/commit/cebd2e108acd13c5041e1039387cd5f36db4afe7)).
+The complete standalone history, contributions and release tags remain in
+[AntiMatterLogger](https://github.com/david830wu/AntiMatterLogger).
+It is now a plain part of Common: built, tested and packaged by the root build (§12),
+versioned with Common (0.5.0) and installed as package component `Logger`.
+
+It follows Common's strict naming convention (AntiMatterCommon `CLAUDE.md`): every name in
+the logger's namespace carries the component, and every name that is not public API
+carries `_internal_`. User-visible changes:
+
+| Before | After |
+| --- | --- |
+| `AMC_JSON`, `AMC_KV_INT/I64/U64/F64/STR/BOOL/STR_ESC` | `AMC_LOGGER_JSON`, `AMC_LOGGER_KV_*` |
+| `find_package(AntiMatterLogger 0.4)` | `find_package(AntiMatterCommon 0.5 COMPONENTS Logger)`; the target stays `AntiMatter::AmcLogger` |
+| worker thread `amc-worker` | `amc-logger` |
+
+The plumbing the macros need in the public header — `struct amc_logger`,
+`amc_logger_resolve`, `amc_logger_log`, the call-site adapters and the composer's helper
+macros — became `struct amc_logger_internal_handle`, `amc_logger_internal_resolve` /
+`amc_logger_internal_log` and `AMC_LOGGER_INTERNAL_*`. Implementation internals (`g_amc`,
+`amc_internal_*`, internal types, enum constants, limits) became `amc_logger_internal_*` /
+`AMC_LOGGER_INTERNAL_*`. The library therefore exports the five API functions and
+`amc_logger_internal_*` symbols only: nothing in the bare `amc_` namespace that another
+Common component could collide with, which matters because AntiMatterFusion relies on
+process-wide symbol interposition. Tests, benchmarks and the example are named by their
+targets (`AmcLoggerTest07_AsyncAndReliability`, `AmcLoggerBenchEnqueue`,
+`AmcLoggerExample`); file-local test helpers dropped the prefix (`assert_log_line`).
+
+Apart from the worker thread's name, behavior is unchanged: same line format, semantics and
+memory orders, and the `AMC_LOGGER_JSON` expansion is still byte-identical to the raw form
+(chapter 10).
