@@ -64,3 +64,9 @@ bld/
 # python
 __pycache__/
 *.pyc
+
+# build trees and local install prefixes (build_component.sh, CI)
+build*/
+Testing/
+.local/
+_prefix/

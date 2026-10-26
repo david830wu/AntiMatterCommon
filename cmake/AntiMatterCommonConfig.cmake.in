@@ -1,0 +1,24 @@
+@PACKAGE_INIT@
+
+# Components link Threads::Threads as a PUBLIC dependency; resolve it for the
+# consumer before importing the targets.
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/AntiMatterCommonTargets.cmake")
+
+# Every component is installed with the package, so COMPONENTS only validates
+# the requested names: an unknown required one fails find_package, by name.
+foreach(amc_component IN ITEMS @AMC_COMPONENT_NAMES@)
+    set(AntiMatterCommon_${amc_component}_FOUND TRUE)
+endforeach()
+foreach(amc_component IN LISTS AntiMatterCommon_FIND_COMPONENTS)
+    if(AntiMatterCommon_FIND_REQUIRED_${amc_component}
+       AND NOT AntiMatterCommon_${amc_component}_FOUND)
+        set(AntiMatterCommon_NOT_FOUND_MESSAGE
+            "unknown component '${amc_component}' (available: @AMC_COMPONENT_NAMES@)")
+    endif()
+endforeach()
+unset(amc_component)
+
+check_required_components(AntiMatterCommon)
